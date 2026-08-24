@@ -1,0 +1,15 @@
+# Secrets - never commit these
+.env
+serviceAccountKey.json
+
+# Python
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+instance/
+
+# ChromaDB local persistence (added now since RAG is on the roadmap;
+# harmless if unused yet, saves you re-adding it later)
+chroma_db/
+*.sqlite3
