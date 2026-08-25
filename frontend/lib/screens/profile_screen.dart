@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'login_screen.dart' show AppColors;
 import '../widgets/app_bottom_nav.dart';
+import '../services/auth_service.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -14,8 +15,9 @@ class ProfileScreen extends StatelessWidget {
   static const String _university = 'Central University';
 
   Future<void> _handleLogout(BuildContext context) async {
-    // TODO: replace with real sign-out once AuthService exists:
-    //   await AuthService().logout();
+    await AuthService().logout();
+
+    if (!context.mounted) return;
     Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
   }
 

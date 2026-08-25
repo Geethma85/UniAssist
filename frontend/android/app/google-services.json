@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "117413510454",
+    "project_id": "uniassist-5a787",
+    "storage_bucket": "uniassist-5a787.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:117413510454:android:8f32d9e02a771cd9c54797",
+        "android_client_info": {
+          "package_name": "com.example.uniassist"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCZHTp3RnsBbX16WpXqQDPMlsp9skSJ5Gg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
