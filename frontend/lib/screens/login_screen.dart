@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-
+import 'package:firebase_auth/firebase_auth.dart';
+import '../services/auth_service.dart';
 /// UniAssist color palette, pulled from the Stitch design tokens.
 /// Kept as static consts here for now — if more screens repeat these,
 /// promote this into a shared `lib/theme/app_colors.dart`.
@@ -28,6 +29,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _authService = AuthService();
+  String? _errorMessage;
 
   bool _obscurePassword = true;
   bool _rememberMe = false;
@@ -40,25 +43,55 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // NOTE: not wired to Firebase yet — this is the next step.
   Future<void> _handleSignIn() async {
+    setState(() => _errorMessage = null);
+
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
 
-    // TODO: replace with AuthService().login(...)
-    await Future.delayed(const Duration(milliseconds: 800));
+    try {
+      await _authService.login(
+        email: _emailController.text,
+        password: _passwordController.text,
+      );
 
-    if (!mounted) return;
-    setState(() => _isLoading = false);
-
-    Navigator.of(context).pushReplacementNamed('/home');
+      if (!mounted) return;
+      Navigator.of(context).pushReplacementNamed('/home');
+    } on FirebaseAuthException catch (e) {
+      setState(() => _errorMessage = _friendlyAuthError(e.code));
+    } catch (e) {
+      setState(() => _errorMessage = 'Something went wrong. Please check your connection and try again.');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   // NOTE: requires google_sign_in package + Firebase OAuth client setup.
   // Wiring this is a separate step from email/password auth.
   Future<void> _handleGoogleSignIn() async {
     // TODO: implement Google Sign-In
+  }
+  
+  /// Maps Firebase Auth error codes to user-friendly messages.
+  String _friendlyAuthError(String code) {
+    switch (code) {
+      case 'invalid-email':
+        return 'That email address looks invalid.';
+      case 'user-not-found':
+      case 'invalid-credential':
+        return 'No account found with that email and password.';
+      case 'wrong-password':
+        return 'Incorrect password. Please try again.';
+      case 'user-disabled':
+        return 'This account has been disabled.';
+      case 'network-request-failed':
+        return 'Network error. Please check your connection.';
+      case 'too-many-requests':
+        return 'Too many attempts. Please try again later.';
+      default:
+        return 'Login failed. Please try again.';
+    }
   }
 
   @override
@@ -104,6 +137,23 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 12),
                       _buildRememberMe(),
                       const SizedBox(height: 24),
+                      if (_errorMessage != null) ...[
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.red.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.red.withOpacity(0.3)),
+                          ),
+                          child: Text(
+                            _errorMessage!,
+                            style: const TextStyle(color: Colors.red, fontSize: 13),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
                       _buildSignInButton(),
                       const SizedBox(height: 20),
                       _buildFooter(),
@@ -333,6 +383,9 @@ class _LoginScreenState extends State<LoginScreen> {
           validator: (value) {
             if (value == null || value.isEmpty) {
               return 'Password is required';
+            }
+            if (value.length < 6) {
+              return 'Password must be at least 6 characters';
             }
             return null;
           },

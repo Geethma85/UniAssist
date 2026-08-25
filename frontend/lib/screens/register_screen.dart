@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'login_screen.dart' show AppColors;
+import 'package:firebase_auth/firebase_auth.dart';
+import '../services/auth_service.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -14,6 +16,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  final _authService = AuthService();
+  String? _errorMessage;
 
   bool _isLoading = false;
 
@@ -28,18 +32,45 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   // NOTE: not wired to Firebase yet — that's the next step, alongside login.
   Future<void> _handleRegister() async {
-    if (!_formKey.currentState!.validate()) return;
+  setState(() => _errorMessage = null);
 
-    setState(() => _isLoading = true);
+  if (!_formKey.currentState!.validate()) return;
 
-    // TODO: replace with AuthService().register(...)
-    await Future.delayed(const Duration(milliseconds: 800));
+  setState(() => _isLoading = true);
+
+  try {
+    await _authService.register(
+      name: _fullNameController.text,
+      email: _emailController.text,
+      password: _passwordController.text,
+    );
 
     if (!mounted) return;
-    setState(() => _isLoading = false);
-
     Navigator.of(context).pushReplacementNamed('/home');
+  } on FirebaseAuthException catch (e) {
+    setState(() => _errorMessage = _friendlyAuthError(e.code));
+  } catch (e) {
+    setState(() => _errorMessage = 'Something went wrong. Please check your connection and try again.');
+  } finally {
+    if (mounted) setState(() => _isLoading = false);
   }
+}
+
+/// Maps Firebase Auth error codes to user-friendly messages.
+String _friendlyAuthError(String code) {
+  switch (code) {
+    case 'email-already-in-use':
+      return 'An account with this email already exists.';
+    case 'invalid-email':
+      return 'That email address looks invalid.';
+    case 'weak-password':
+      return 'Password is too weak. Use at least 6 characters.';
+    case 'network-request-failed':
+      return 'Network error. Please check your connection.';
+    default:
+      return 'Registration failed. Please try again.';
+  }
+}
 
   // NOTE: same Google Sign-In caveat as login_screen.dart — needs
   // google_sign_in package + Firebase OAuth client setup, separate step.
@@ -147,6 +178,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             },
                           ),
                           const SizedBox(height: 24),
+                          if (_errorMessage != null) ...[
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.red.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.red.withOpacity(0.3)),
+                              ),
+                              child: Text(
+                                _errorMessage!,
+                                style: const TextStyle(color: Colors.red, fontSize: 13),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
                           _buildRegisterButton(),
                           const SizedBox(height: 16),
                           _buildFooter(),
