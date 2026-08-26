@@ -46,3 +46,10 @@ app.*.map.json
 
 #keeps stray OS files out at the top level.
 .DS_Store
+
+**/GeneratedPluginRegistrant.swift
+**/generated_plugin_registrant.cc
+**/generated_plugin_registrant.h
+**/generated_plugins.cmake
+**/GeneratedPluginRegistrant.java
+**/GeneratedPluginRegistrant.m
