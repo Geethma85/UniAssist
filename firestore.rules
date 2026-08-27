@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /users/{userId} {
+      // Read: only your own doc
+      allow read: if request.auth != null && request.auth.uid == userId;
+
+      // Create: only your own doc, and you must self-register as "student"
+      allow create: if request.auth != null
+                    && request.auth.uid == userId
+                    && request.resource.data.role == "student";
+
+      // Update: only your own doc, and "role" must not change
+      allow update: if request.auth != null
+                    && request.auth.uid == userId
+                    && request.resource.data.role == resource.data.role;
+
+      // No client-side deletes
+      allow delete: if false;
+    }
+
+    // Default deny — anything not explicitly matched above is blocked
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
