@@ -1,18 +1,84 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'login_screen.dart' show AppColors;
 import '../widgets/app_bottom_nav.dart';
 import '../services/auth_service.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
-  // TODO: replace all of the below with real data from AuthService /
-  // the signed-in Firebase user + their Firestore users/{uid} doc.
-  static const String _name = 'Alex Johnson';
-  static const String _email = 'alex.j@university.edu';
-  static const String _accountRole = 'Undergraduate Student';
-  static const String _joinedDate = 'September 2023';
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  bool _loading = true;
+  String? _error;
+
+  String _name = '';
+  String _email = '';
+  String _accountRole = '';
+  String _joinedDate = '';
+
+  // TODO: no field for this in Firestore yet — not collected at registration.
   static const String _university = 'Central University';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      setState(() {
+        _error = 'Not signed in';
+        _loading = false;
+      });
+      return;
+    }
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      final data = doc.data() ?? {};
+
+      setState(() {
+        _name = data['name'] as String? ?? 'Unknown';
+        _email = data['email'] as String? ?? user.email ?? '—';
+        _accountRole = _formatRole(data['role'] as String? ?? 'student');
+        _joinedDate = _formatJoinedDate(data['createdAt']);
+        _loading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = 'Could not load profile. Please try again.';
+        _loading = false;
+      });
+    }
+  }
+
+  String _formatRole(String role) {
+    if (role.isEmpty) return role;
+    return role[0].toUpperCase() + role.substring(1);
+  }
+
+  String _formatJoinedDate(dynamic createdAt) {
+    if (createdAt is Timestamp) {
+      final date = createdAt.toDate();
+      const months = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December',
+      ];
+      return '${months[date.month - 1]} ${date.year}';
+    }
+    return '—';
+  }
 
   Future<void> _handleLogout(BuildContext context) async {
     await AuthService().logout();
@@ -29,37 +95,41 @@ class ProfileScreen extends StatelessWidget {
         child: Column(
           children: [
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  children: [
-                    const SizedBox(height: 12),
-                    _buildAvatar(),
-                    const SizedBox(height: 16),
-                    Text(
-                      _name,
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.onSurface,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _email,
-                      style: TextStyle(fontSize: 15, color: AppColors.onSurfaceVariant),
-                    ),
-                    const SizedBox(height: 12),
-                    _buildVerifiedBadge(),
-                    const SizedBox(height: 28),
-                    _buildSectionLabel('ACCOUNT DETAILS'),
-                    const SizedBox(height: 12),
-                    _buildAccountDetailsCard(context),
-                    const SizedBox(height: 24),
-                    _buildLogoutButton(context),
-                  ],
-                ),
-              ),
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                      ? Center(child: Text(_error!))
+                      : SingleChildScrollView(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            children: [
+                              const SizedBox(height: 12),
+                              _buildAvatar(),
+                              const SizedBox(height: 16),
+                              Text(
+                                _name,
+                                style: TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.onSurface,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _email,
+                                style: TextStyle(fontSize: 15, color: AppColors.onSurfaceVariant),
+                              ),
+                              const SizedBox(height: 12),
+                              _buildVerifiedBadge(),
+                              const SizedBox(height: 28),
+                              _buildSectionLabel('ACCOUNT DETAILS'),
+                              const SizedBox(height: 12),
+                              _buildAccountDetailsCard(context),
+                              const SizedBox(height: 24),
+                              _buildLogoutButton(context),
+                            ],
+                          ),
+                        ),
             ),
             const AppBottomNav(currentTab: AppTab.profile),
           ],
@@ -78,7 +148,6 @@ class ProfileScreen extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: Image.asset(
-        // TODO: swap for the real profile photo URL from Firebase/Firestore
         'assets/images/profile_placeholder.png',
         fit: BoxFit.cover,
         errorBuilder: (context, error, stackTrace) => Container(

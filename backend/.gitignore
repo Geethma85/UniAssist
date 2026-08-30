@@ -13,3 +13,4 @@ instance/
 # harmless if unused yet, saves you re-adding it later)
 chroma_db/
 *.sqlite3
+

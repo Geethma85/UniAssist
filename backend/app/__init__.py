@@ -1,4 +1,6 @@
 import os
+from dotenv import load_dotenv
+load_dotenv()
 import firebase_admin
 from firebase_admin import credentials
 from flask import Flask
@@ -21,5 +23,8 @@ def create_app():
 
     from app.routes.health import health_bp
     app.register_blueprint(health_bp)
+
+    from app.routes.chat import chat_bp
+    app.register_blueprint(chat_bp)
 
     return app
