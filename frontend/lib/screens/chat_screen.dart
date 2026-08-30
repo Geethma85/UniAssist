@@ -1,406 +1,196 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'login_screen.dart' show AppColors;
-import '../widgets/chat_history_drawer.dart';
+import 'package:http/http.dart' as http;
+import 'package:firebase_auth/firebase_auth.dart';
 
-enum MessageSender { user, assistant }
-
+/// Simple in-memory chat message. Not persisted anywhere yet — that's a
+/// later session. If the app restarts, this history is gone.
 class ChatMessage {
-  final MessageSender sender;
-  final String text;
-  final String? sourceCitation;
+  final String role; // "user" or "assistant"
+  final String content;
+  ChatMessage({required this.role, required this.content});
 
-  ChatMessage({required this.sender, required this.text, this.sourceCitation});
+  Map<String, String> toJson() => {"role": role, "content": content};
 }
 
 class ChatScreen extends StatefulWidget {
-  /// Pass these when opening an existing conversation (e.g. from the
-  /// drawer or Home's "Recent Conversations" list). Leave both null to
-  /// open a fresh, blank chat — the default entry point from the
-  /// bottom nav's Chat tab and Home's "Start New Chat" card.
   final String? conversationTitle;
   final List<ChatMessage>? initialMessages;
 
-  const ChatScreen({
-    super.key,
-    this.conversationTitle,
-    this.initialMessages,
-  });
+  const ChatScreen({super.key, this.conversationTitle, this.initialMessages});
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  final _messageController = TextEditingController();
-  final _scrollController = ScrollController();
-  final _scaffoldKey = GlobalKey<ScaffoldState>();
-
-  late List<ChatMessage> _messages;
-  late String? _conversationTitle;
-  bool _isAssistantTyping = false;
-
-  bool get _isBlankState => _messages.isEmpty;
+  final List<ChatMessage> _messages = [];
+  final TextEditingController _controller = TextEditingController();
+  bool _isLoading = false;
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    _messages = widget.initialMessages ?? [];
-    _conversationTitle = widget.conversationTitle;
+    // Seed with any prior messages passed in (empty for now, since chat
+    // history persistence isn't built yet — this is just here so an
+    // already-existing conversation could be reopened later without
+    // another change to this file).
+    if (widget.initialMessages != null) {
+      _messages.addAll(widget.initialMessages!);
+    }
+  }
+
+  // TODO: point this at your real backend once deployed.
+  // localhost works when testing on Chrome (flutter run -d chrome).
+  // If you switch to testing on an Android emulator, change this to
+  // http://10.0.2.2:5000/chat instead (10.0.2.2 is the emulator's alias
+  // for your host machine). For a physical device on the same WiFi, use
+  // your computer's LAN IP instead, e.g. http://192.168.1.X:5000/chat.
+  static const String _backendUrl = "http://localhost:5000/chat";
+
+  Future<void> _sendMessage() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty || _isLoading) return;
+
+    setState(() {
+      _messages.add(ChatMessage(role: "user", content: text));
+      _isLoading = true;
+      _errorMessage = null;
+    });
+    _controller.clear();
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception("Not signed in");
+      }
+      final idToken = await user.getIdToken();
+
+      // Everything except the message we just added is "history" — the
+      // backend expects the current message separately from prior turns.
+      final history = _messages
+          .sublist(0, _messages.length - 1)
+          .map((m) => m.toJson())
+          .toList();
+
+      final response = await http
+          .post(
+            Uri.parse(_backendUrl),
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": "Bearer $idToken",
+            },
+            body: jsonEncode({"message": text, "history": history}),
+          )
+          .timeout(const Duration(seconds: 25));
+
+      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+
+      if (response.statusCode == 200) {
+        setState(() {
+          _messages.add(ChatMessage(role: "assistant", content: decoded["reply"] as String));
+        });
+      } else {
+        setState(() {
+          _errorMessage = (decoded["error"] as String?) ?? "Something went wrong. Please try again.";
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = "Couldn't reach UniAssist. Check your connection and try again.";
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override
   void dispose() {
-    _messageController.dispose();
-    _scrollController.dispose();
+    _controller.dispose();
     super.dispose();
-  }
-
-  Future<void> _handleSend() async {
-    final text = _messageController.text.trim();
-    if (text.isEmpty) return;
-
-    setState(() {
-      _messages.add(ChatMessage(sender: MessageSender.user, text: text));
-      _isAssistantTyping = true;
-    });
-    _messageController.clear();
-    _scrollToBottom();
-
-    // TODO: replace this simulated delay + canned reply with a real call
-    // to the Flask backend, e.g.:
-    //   final reply = await ChatService().sendMessage(
-    //     conversationId: _conversationId, // null on first send -> backend creates one
-    //     message: text,
-    //   );
-    // The backend should also generate a short topic title from the first
-    // exchange and return it, so we can set _conversationTitle here.
-    await Future.delayed(const Duration(seconds: 1));
-
-    if (!mounted) return;
-    setState(() {
-      _isAssistantTyping = false;
-      _conversationTitle ??= _deriveFallbackTitle(text);
-      _messages.add(
-        ChatMessage(
-          sender: MessageSender.assistant,
-          text: "This is a placeholder response — not yet connected to "
-              "the real backend.",
-        ),
-      );
-    });
-    _scrollToBottom();
-  }
-
-  // TODO: temporary client-side stand-in. Real title generation should
-  // happen server-side via a small Claude API call once the backend exists.
-  String _deriveFallbackTitle(String firstMessage) {
-    final trimmed = firstMessage.trim();
-    return trimmed.length <= 40 ? trimmed : '${trimmed.substring(0, 40)}...';
-  }
-
-  void _startNewChat() {
-    setState(() {
-      _messages = [];
-      _conversationTitle = null;
-      _isAssistantTyping = false;
-    });
-    _messageController.clear();
-  }
-
-  void _openConversation(ConversationSummary conversation) {
-    // TODO: replace with a real fetch of this conversation's messages
-    // from Firestore, keyed by conversation.id.
-    setState(() {
-      _conversationTitle = conversation.title;
-      _messages = [
-        ChatMessage(
-          sender: MessageSender.assistant,
-          text: 'This is a placeholder reload of "${conversation.title}" — '
-              'not yet wired to real stored messages.',
-        ),
-      ];
-      _isAssistantTyping = false;
-    });
-    _scrollToBottom();
-  }
-
-  void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollController.hasClients) return;
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
-      );
-    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      key: _scaffoldKey,
-      backgroundColor: AppColors.background,
-      drawer: ChatHistoryDrawer(
-        onSelectConversation: _openConversation,
-        onNewChat: _startNewChat,
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildAppBar(),
-            Expanded(
-              child: _isBlankState ? _buildWelcomeState() : _buildConversation(),
-            ),
-            _buildInputBar(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAppBar() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 8, 16, 8),
-      child: Row(
+      appBar: AppBar(title: Text(widget.conversationTitle ?? "UniAssist Chat")),
+      body: Column(
         children: [
-          Builder(
-            builder: (context) => IconButton(
-              icon: const Icon(Icons.menu, color: AppColors.onSurface),
-              tooltip: 'Chat history',
-              onPressed: () => Scaffold.of(context).openDrawer(),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              _conversationTitle ?? 'UniAssist',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.bold,
-                color: AppColors.onSurface,
-              ),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.edit_square, color: AppColors.primary),
-            tooltip: 'New chat',
-            onPressed: _startNewChat,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWelcomeState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+          if (_errorMessage != null)
             Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(28),
-              ),
-              child: const Icon(Icons.chat_bubble, color: Colors.white, size: 26),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              // TODO: personalize with the signed-in user's first name
-              'Hi, welcome back!',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: AppColors.onSurface,
+              width: double.infinity,
+              color: Colors.red.shade100,
+              padding: const EdgeInsets.all(8),
+              child: Text(
+                _errorMessage!,
+                style: TextStyle(color: Colors.red.shade900),
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Ask me about your courses, campus info, or tasks.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 15, color: AppColors.onSurfaceVariant),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildConversation() {
-    return ListView(
-      controller: _scrollController,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      children: [
-        ..._messages.map(_buildMessageBubble),
-        if (_isAssistantTyping) _buildTypingIndicator(),
-      ],
-    );
-  }
-
-  Widget _buildMessageBubble(ChatMessage message) {
-    final isUser = message.sender == MessageSender.user;
-
-    final bubble = Container(
-      constraints: const BoxConstraints(maxWidth: 560),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isUser ? AppColors.primary : AppColors.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Text(
-        message.text,
-        style: TextStyle(
-          fontSize: 15,
-          height: 1.4,
-          color: isUser ? AppColors.onPrimary : AppColors.onSurface,
-        ),
-      ),
-    );
-
-    final row = Row(
-      mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: isUser
-          ? [Flexible(child: bubble)]
-          : [
-              CircleAvatar(
-                radius: 14,
-                backgroundColor: AppColors.surfaceContainerLow,
-                child: Icon(Icons.school_outlined, size: 14, color: AppColors.primary),
-              ),
-              const SizedBox(width: 8),
-              Flexible(child: bubble),
-            ],
-    );
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Column(
-        crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-        children: [
-          row,
-          if (message.sourceCitation != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 6, left: 36),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.description_outlined, size: 14, color: AppColors.onSurfaceVariant),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Source: ${message.sourceCitation}',
-                    style: TextStyle(fontSize: 12, color: AppColors.onSurfaceVariant),
+          Expanded(
+            child: _messages.isEmpty
+                ? const Center(child: Text("Ask UniAssist something to get started."))
+                : ListView.builder(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: _messages.length,
+                    itemBuilder: (context, index) {
+                      final msg = _messages[index];
+                      final isUser = msg.role == "user";
+                      return Align(
+                        alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(vertical: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: isUser ? Colors.blue.shade400 : Colors.grey.shade300,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          constraints: BoxConstraints(
+                            maxWidth: MediaQuery.of(context).size.width * 0.75,
+                          ),
+                          child: Text(
+                            msg.content,
+                            style: TextStyle(color: isUser ? Colors.white : Colors.black87),
+                          ),
+                        ),
+                      );
+                    },
                   ),
-                ],
+          ),
+          if (_isLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: SizedBox(
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
               ),
             ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTypingIndicator() {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          CircleAvatar(
-            radius: 14,
-            backgroundColor: AppColors.surfaceContainerLow,
-            child: Icon(Icons.smart_toy_outlined, size: 14, color: AppColors.onSurfaceVariant),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'UniAssist is thinking',
-                  style: TextStyle(fontSize: 14, color: AppColors.onSurfaceVariant),
-                ),
-                const SizedBox(width: 8),
-                SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: AppColors.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInputBar() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        border: Border(top: BorderSide(color: AppColors.outlineVariant.withOpacity(0.3))),
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceContainerLowest,
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: AppColors.outlineVariant.withOpacity(0.5)),
-            ),
+          Padding(
+            padding: const EdgeInsets.all(8),
             child: Row(
               children: [
-                IconButton(
-                  icon: Icon(Icons.add, color: AppColors.onSurfaceVariant),
-                  onPressed: () {
-                    // TODO: attach file / context (e.g. document upload for RAG)
-                  },
-                ),
                 Expanded(
                   child: TextField(
-                    controller: _messageController,
-                    minLines: 1,
-                    maxLines: 4,
-                    decoration: InputDecoration(
-                      hintText: 'Ask UniAssist...',
-                      hintStyle: TextStyle(color: AppColors.onSurfaceVariant),
-                      border: InputBorder.none,
+                    controller: _controller,
+                    decoration: const InputDecoration(
+                      hintText: "Ask UniAssist something...",
+                      border: OutlineInputBorder(),
                     ),
-                    onSubmitted: (_) => _handleSend(),
+                    onSubmitted: (_) => _sendMessage(),
                   ),
                 ),
-                Container(
-                  margin: const EdgeInsets.all(4),
-                  decoration: const BoxDecoration(
-                    color: AppColors.primary,
-                    shape: BoxShape.circle,
-                  ),
-                  child: IconButton(
-                    icon: const Icon(Icons.send, color: Colors.white, size: 18),
-                    onPressed: _handleSend,
-                  ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.send),
+                  onPressed: _isLoading ? null : _sendMessage,
                 ),
               ],
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'AI responses may be inaccurate. Please verify important academic dates.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 11, color: AppColors.onSurfaceVariant),
           ),
         ],
       ),
