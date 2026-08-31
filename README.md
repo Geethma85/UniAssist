@@ -2,11 +2,9 @@
 
 An AI-powered university student assistant that answers general academic questions and provides accurate, source-grounded answers from institutional documents using Retrieval-Augmented Generation (RAG).
 
-Built as a portfolio project to demonstrate full-stack development, AI/LLM integration, and secure software engineering practices for Software Engineering and QA internship applications.
-
 ---
 
-## 📖 Overview
+##  Overview
 
 UniAssist lets students chat with an AI assistant about academic and university-related questions. It combines two response modes:
 
@@ -17,7 +15,7 @@ The app supports two roles — **Student** and **Admin** — with role-based acc
 
 ---
 
-## ✨ Features
+##  Features
 
 - 🔐 Secure authentication (Firebase Auth) with role-based access control
 - 💬 Conversational AI chatbot with context-aware, multi-turn conversations
@@ -31,7 +29,7 @@ The app supports two roles — **Student** and **Admin** — with role-based acc
 
 ---
 
-## 🛠️ Tech Stack
+##  Tech Stack
 
 | Layer | Technology |
 |---|---|
@@ -48,7 +46,7 @@ The app supports two roles — **Student** and **Admin** — with role-based acc
 
 ---
 
-## 🏗️ Architecture
+##  Architecture
 
 ```
 Flutter App
@@ -66,7 +64,7 @@ The frontend never exposes secret API keys — all AI/service calls are routed t
 
 ---
 
-## 📂 Project Structure
+##  Project Structure
 
 ```
 uniassist/
@@ -90,7 +88,7 @@ uniassist/
 
 ---
 
-## 🔒 Security
+##  Security
 
 - API keys and service account credentials stored in environment variables, never committed to source control
 - Firestore security rules restrict users to reading/writing only their own data, with the `role` field locked from client-side modification after account creation (prevents self-promotion to admin)
@@ -101,7 +99,7 @@ uniassist/
 
 ---
 
-## 🚀 Getting Started
+##  Getting Started
 
 ### Prerequisites
 - Flutter SDK
@@ -141,7 +139,7 @@ flutter run
 
 ---
 
-## 🧪 Testing
+##  Testing
 
 Backend logic is tested with `pytest` as each feature is built, covering:
 - Authentication middleware (missing/invalid/malformed tokens)
@@ -158,7 +156,7 @@ API endpoints are additionally tested manually via **Postman** for request/respo
 
 ---
 
-## 📌 Project Status
+##  Project Status
 
 This project is being built incrementally over a ~2-week MVP sprint. Current progress:
 
@@ -170,7 +168,7 @@ This project is being built incrementally over a ~2-week MVP sprint. Current pro
 - User profile screen wired to real Firestore data
 - Basic pytest coverage for auth middleware
 
-**🚧 In Progress**
+**✅ Done**
 - Chatbot endpoint (Gemini API integration) and chat UI
 
 **📋 Planned**
@@ -182,7 +180,7 @@ This project is being built incrementally over a ~2-week MVP sprint. Current pro
 
 ---
 
-## ⚠️ Known Limitations
+##  Known Limitations
 
 - Uses the Gemini API free tier, which has request-rate limits unsuitable for high-traffic production use
 - Google Sign-In and password reset are UI placeholders, not yet functional
@@ -190,7 +188,7 @@ This project is being built incrementally over a ~2-week MVP sprint. Current pro
 
 ---
 
-## 🔮 Future Improvements
+##  Future Improvements
 
 - Add automated CI test runs on push
 - Expand RAG to support more document types beyond PDF/text
@@ -199,10 +197,6 @@ This project is being built incrementally over a ~2-week MVP sprint. Current pro
 - Migrate to a paid LLM tier for production-grade rate limits
 
 ---
-
-## 👤 Author
-
-Built as a solo portfolio project to demonstrate full-stack development, AI/LLM integration, and secure coding practices for internship applications.
 
 ## 📄 License
 
