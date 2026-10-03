@@ -69,3 +69,31 @@ def query_chunks(question: str, top_k: int = 3):
         n_results=top_k,
     )
     return results
+
+DISTANCE_THRESHOLD = 0.8  # cosine distance cutoff; chunks farther than this
+                           # are treated as irrelevant to the question.
+                           # Tuned by eye — revisit with real usage data.
+
+
+def get_relevant_chunks(question: str, top_k: int = 3) -> list[dict]:
+    """
+    Returns a list of relevant chunks for the question, each as
+    {"text": ..., "filename": ..., "distance": ...}, filtered to only
+    chunks under DISTANCE_THRESHOLD. Returns [] if nothing is relevant
+    (including when the collection is empty).
+    """
+    results = query_chunks(question, top_k=top_k)
+
+    documents = results.get("documents", [[]])[0]
+    metadatas = results.get("metadatas", [[]])[0]
+    distances = results.get("distances", [[]])[0]
+
+    relevant = []
+    for text, meta, distance in zip(documents, metadatas, distances):
+        if distance <= DISTANCE_THRESHOLD:
+            relevant.append({
+                "text": text,
+                "filename": meta.get("filename", "unknown"),
+                "distance": distance,
+            })
+    return relevant
