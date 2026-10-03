@@ -12,6 +12,7 @@ from flask import Blueprint, request, jsonify
 
 from app.middleware.auth import require_auth
 from app.services.gemini_service import get_chat_reply, GeminiServiceError
+from app.services.vector_store import get_relevant_chunks
 
 chat_bp = Blueprint("chat", __name__)
 
@@ -47,8 +48,9 @@ def chat():
     # anything yet, but it's cheap to have in place now.
     trimmed_history = history[-MAX_HISTORY_TURNS:]
 
+    relevant_chunks = get_relevant_chunks(message.strip())
     try:
-        reply = get_chat_reply(message.strip(), trimmed_history)
+        reply = get_chat_reply(message.strip(), trimmed_history, context_chunks=relevant_chunks)
     except GeminiServiceError as e:
         return jsonify({"error": str(e)}), e.status_code
 

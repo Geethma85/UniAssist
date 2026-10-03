@@ -36,6 +36,22 @@ SYSTEM_PROMPT = (
     "Keep answers focused — avoid unnecessary padding."
 )
 
+RAG_INSTRUCTIONS = (
+    "\n\nYou have been given excerpts from official university documents "
+    "below, relevant to the student's question. Base your answer only on "
+    "this context. When you use it, mention which document it came from "
+    "(e.g. 'According to handbook.pdf...'). If the excerpts do not actually "
+    "answer the question, say plainly that you don't have that information "
+    "in the university's documents — do not guess or fall back on general "
+    "knowledge for anything document-specific."
+)
+
+
+def _build_context_block(context_chunks: list[dict]) -> str:
+    lines = []
+    for chunk in context_chunks:
+        lines.append(f"[Source: {chunk['filename']}]\n{chunk['text']}")
+    return "\n\n".join(lines)
 
 class GeminiServiceError(Exception):
     """
@@ -82,30 +98,32 @@ def _history_to_contents(history):
     return contents
 
 
-def get_chat_reply(message: str, history: list | None = None) -> str:
+def get_chat_reply(message: str, history: list | None = None, context_chunks: list | None = None) -> str:
     """
     Send one user message plus prior turns to Gemini, return the reply text.
-    Raises GeminiServiceError on any failure — timeouts, rate limits, bad
-    responses — so the caller never has to deal with raw SDK exceptions.
+    If context_chunks is provided (from RAG retrieval), they're appended to
+    the system prompt with instructions to answer from them and cite the
+    source. Raises GeminiServiceError on any failure.
     """
     history = history or []
     contents = _history_to_contents(history)
     contents.append(types.Content(role="user", parts=[types.Part.from_text(text=message)]))
+
+    system_instruction = SYSTEM_PROMPT
+    if context_chunks:
+        context_block = _build_context_block(context_chunks)
+        system_instruction = (
+            SYSTEM_PROMPT + RAG_INSTRUCTIONS + "\n\n---\n" + context_block + "\n---"
+        )
 
     try:
         response = _get_client().models.generate_content(
             model=MODEL_NAME,
             contents=contents,
             config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
+                system_instruction=system_instruction,
                 max_output_tokens=1024,
                 temperature=0.7,
-                # NOTE: per-request timeout config has moved around between
-                # google-genai SDK versions (types.HttpOptions(timeout=...)
-                # in recent ones). Check whatever version pins in your
-                # requirements.txt against the current docs if you want a
-                # hard timeout here — the broad except below still protects
-                # you either way.
             ),
         )
     except APIError as e:
@@ -124,3 +142,4 @@ def get_chat_reply(message: str, history: list | None = None) -> str:
         raise GeminiServiceError("AI service returned an empty response.", 502)
 
     return response.text
+

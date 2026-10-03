@@ -16,3 +16,5 @@ backend/chroma_db/
 
 # OS
 .DS_Store
+
+chroma_data/

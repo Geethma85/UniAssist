@@ -20,11 +20,16 @@ def create_app():
     fresh instances) instead of using a single global Flask object."""
     app = Flask(__name__)
     CORS(app)
+    
+    app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10 MB, matches our file validation
 
     from app.routes.health import health_bp
     app.register_blueprint(health_bp)
 
     from app.routes.chat import chat_bp
     app.register_blueprint(chat_bp)
+    
+    from app.routes.documents import documents_bp
+    app.register_blueprint(documents_bp)
 
     return app
