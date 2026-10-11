@@ -31,6 +31,7 @@ def save_message(uid, conversation_id, role, content):
     convo_ref = _conversations_ref(uid).document(conversation_id)
     msg_ref = convo_ref.collection("messages").document()
 
+    batch = firestore.client().batch()
     batch.set(msg_ref, {
         "role": role,
         "content": content,
