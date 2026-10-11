@@ -42,3 +42,20 @@ def save_message(uid, conversation_id, role, text):
         "lastMessagePreview": text[:PREVIEW_MAX],
     })
     batch.commit()
+    
+def get_recent_messages(uid, conversation_id, limit=20):
+    """Return the last `limit` messages oldest-first, or None if the
+    conversation doesn't exist under this user."""
+    convo_ref = _conversations_ref(uid).document(conversation_id)
+    if not convo_ref.get().exists:
+        return None  # route turns this into a 404
+
+    docs = (
+        convo_ref.collection("messages")
+        .order_by("createdAt", direction=firestore.Query.DESCENDING)
+        .limit(limit)
+        .stream()
+    )
+    messages = [{"role": d.get("role"), "text": d.get("text")} for d in docs]
+    messages.reverse()  # we fetched newest-first, Gemini wants oldest-first
+    return messages
