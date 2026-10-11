@@ -1,13 +1,22 @@
 """
 chat.py
 
-POST /chat — protected plain-chat endpoint. No RAG, no persistence yet;
-history is whatever the client sends in the request body.
-
-ADJUST THE IMPORT BELOW: swap `your_auth_module` for whatever module
-actually defines your @require_auth decorator.
+POST /chat: protected chat endpoint with RAG. History is loaded from
+Firestore under the verified uid (never trusted from the client), and each
+exchange is saved after Gemini replies.
 """
 
+import logging
+from flask import Blueprint, request, jsonify, g
+
+from app.middleware.auth import require_auth
+from app.services.conversation_service import (
+    create_conversation, save_message, get_recent_messages,
+)
+from app.services.gemini_service import get_chat_reply, GeminiServiceError
+from app.services.vector_store import get_relevant_chunks
+
+logger = logging.getLogger(__name__)
 from flask import Blueprint, request, jsonify
 
 from app.middleware.auth import require_auth
@@ -28,30 +37,46 @@ def chat():
         return jsonify({"error": "Request body must be valid JSON."}), 400
 
     message = data.get("message")
-    history = data.get("history", [])
+    conversation_id = data.get("conversation_id")
 
-    # --- validation ---
     if not isinstance(message, str) or not message.strip():
         return jsonify({"error": "Message cannot be empty."}), 400
-
     if len(message) > MAX_MESSAGE_LENGTH:
         return jsonify(
             {"error": f"Message is too long (max {MAX_MESSAGE_LENGTH} characters)."}
         ), 400
+    if conversation_id is not None and not isinstance(conversation_id, str):
+        return jsonify({"error": "conversation_id must be a string."}), 400
 
-    if not isinstance(history, list):
-        return jsonify({"error": "History must be a list."}), 400
+    message = message.strip()
 
-    # Only forward the most recent turns — protects against a client sending
-    # an ever-growing history and blowing up request size/cost over a long
-    # session. Doesn't matter much today since Flutter isn't persisting
-    # anything yet, but it's cheap to have in place now.
-    trimmed_history = history[-MAX_HISTORY_TURNS:]
+    # History comes from Firestore under the verified uid, never from the client.
+    if conversation_id:
+        history = get_recent_messages(g.uid, conversation_id, MAX_HISTORY_TURNS)
+        if history is None:
+            return jsonify({"error": "Conversation not found."}), 404
+    else:
+        history = []
 
-    relevant_chunks = get_relevant_chunks(message.strip())
+    relevant_chunks = get_relevant_chunks(message)
     try:
-        reply = get_chat_reply(message.strip(), trimmed_history, context_chunks=relevant_chunks)
+        reply = get_chat_reply(message, history, context_chunks=relevant_chunks)
     except GeminiServiceError as e:
         return jsonify({"error": str(e)}), e.status_code
 
-    return jsonify({"reply": reply}), 200
+    # Gemini succeeded, so now persist (option B: nothing saved on failure).
+    saved = True
+    try:
+        if not conversation_id:
+            conversation_id = create_conversation(g.uid, message)
+        save_message(g.uid, conversation_id, "user", message)
+        save_message(g.uid, conversation_id, "assistant", reply)
+    except Exception:
+        logger.exception("Failed to save chat history")
+        saved = False
+
+    return jsonify({
+        "reply": reply,
+        "conversation_id": conversation_id,
+        "saved": saved,
+    }), 200

@@ -2,7 +2,7 @@ from firebase_admin import firestore
 
 TITLE_MAX = 40
 PREVIEW_MAX = 80
-VALID_ROLES = {"user", "model"}
+VALID_ROLES = {"user", "assistant"}
 
 
 def _conversations_ref(uid):
@@ -23,7 +23,7 @@ def create_conversation(uid, first_message):
     return ref.id
 
 
-def save_message(uid, conversation_id, role, text):
+def save_message(uid, conversation_id, role, content):
     """Save one message and update the conversation's preview, atomically."""
     if role not in VALID_ROLES:
         raise ValueError(f"Invalid role: {role}")
@@ -31,15 +31,14 @@ def save_message(uid, conversation_id, role, text):
     convo_ref = _conversations_ref(uid).document(conversation_id)
     msg_ref = convo_ref.collection("messages").document()
 
-    batch = firestore.client().batch()
     batch.set(msg_ref, {
         "role": role,
-        "text": text,
+        "content": content,
         "createdAt": firestore.SERVER_TIMESTAMP,
     })
     batch.update(convo_ref, {
         "updatedAt": firestore.SERVER_TIMESTAMP,
-        "lastMessagePreview": text[:PREVIEW_MAX],
+        "lastMessagePreview": content[:PREVIEW_MAX],
     })
     batch.commit()
     
@@ -56,6 +55,6 @@ def get_recent_messages(uid, conversation_id, limit=20):
         .limit(limit)
         .stream()
     )
-    messages = [{"role": d.get("role"), "text": d.get("text")} for d in docs]
+    messages = [{"role": d.get("role"), "content": d.get("content")} for d in docs]    
     messages.reverse()  # we fetched newest-first, Gemini wants oldest-first
     return messages
