@@ -193,7 +193,6 @@ class HomeScreen extends StatelessWidget {
           MaterialPageRoute(
             builder: (context) => ChatScreen(
               conversationTitle: conversation.title,
-              initialMessages: [], // TODO: fetch real messages for this conversation
             ),
           ),
         );
