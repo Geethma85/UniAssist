@@ -75,3 +75,23 @@ def test_save_message_rejects_invalid_role():
     """Only 'user' and 'assistant' roles may be stored."""
     with pytest.raises(ValueError):
         save_message("test-user-123", "convo-1", "system", "hello")
+
+@patch("app.services.conversation_service.firestore")
+@patch("app.services.conversation_service._conversations_ref")
+def test_save_message_writes_message_and_updates_preview(mock_ref, mock_firestore):
+    """The message doc and the conversation preview go through one batch,
+    and the batch is actually committed."""
+    mock_batch = mock_firestore.client.return_value.batch.return_value
+
+    save_message("uid-1", "convo-1", "user", "hello there")
+
+    mock_ref.assert_called_once_with("uid-1")  # path built from the given uid
+    mock_batch.set.assert_called_once()
+    saved = mock_batch.set.call_args[0][1]
+    assert saved["role"] == "user"
+    assert saved["content"] == "hello there"
+
+    mock_batch.update.assert_called_once()
+    assert mock_batch.update.call_args[0][1]["lastMessagePreview"] == "hello there"
+
+    mock_batch.commit.assert_called_once()
