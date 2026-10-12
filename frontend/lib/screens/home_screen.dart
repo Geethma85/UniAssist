@@ -1,19 +1,79 @@
 import 'package:flutter/material.dart';
 import 'login_screen.dart' show AppColors;
 import '../widgets/app_bottom_nav.dart';
+import '../services/api_service.dart';
 import 'chat_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
   // TODO: replace with real signed-in user's display name from AuthService
   static const String _userFirstName = 'Alex';
 
-  // TODO: replace with real recent conversations fetched from Firestore
-  static const List<_ConversationPreview> _recentConversations = [
-    _ConversationPreview(title: 'Course Registration Help', timestamp: 'Yesterday'),
-    _ConversationPreview(title: 'Campus Library Hours', timestamp: '2 days ago'),
-  ];
+  // Home only shows the latest few; "View all" is for the full list.
+  static const int _maxShown = 5;
+
+  List<ConversationSummary> _conversations = [];
+  bool _isLoading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadConversations();
+  }
+
+  Future<void> _loadConversations() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final list = await ApiService.listConversations();
+      if (!mounted) return;
+      setState(() => _conversations = list);
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } catch (e) {
+      debugPrint('listConversations error: $e');
+      if (mounted) {
+        setState(() => _error = "Couldn't load your conversations.");
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  /// Option A: wait for the pushed screen to close, then reload the list
+  /// so new or updated conversations show up.
+  Future<void> _openChat({String? conversationId, String? title}) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          conversationId: conversationId,
+          conversationTitle: title,
+        ),
+      ),
+    );
+    if (mounted) _loadConversations();
+  }
+
+  String _formatTimestamp(DateTime? t) {
+    if (t == null) return '';
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(t.year, t.month, t.day);
+    final diff = today.difference(day).inDays;
+    if (diff <= 0) return 'Today';
+    if (diff == 1) return 'Yesterday';
+    if (diff < 7) return '$diff days ago';
+    return '${t.day}/${t.month}/${t.year}';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -23,26 +83,25 @@ class HomeScreen extends StatelessWidget {
         child: Column(
           children: [
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildTopBar(),
-                    const SizedBox(height: 24),
-                    _buildWelcomeHeader(),
-                    const SizedBox(height: 20),
-                    _buildStartChatCard(context),
-                    const SizedBox(height: 28),
-                    _buildRecentConversationsHeader(context),
-                    const SizedBox(height: 12),
-                    ..._recentConversations.map(
-                      (c) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _buildConversationTile(context, c),
-                      ),
-                    ),
-                  ],
+              child: RefreshIndicator(
+                onRefresh: _loadConversations,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildTopBar(),
+                      const SizedBox(height: 24),
+                      _buildWelcomeHeader(),
+                      const SizedBox(height: 20),
+                      _buildStartChatCard(context),
+                      const SizedBox(height: 28),
+                      _buildRecentConversationsHeader(context),
+                      const SizedBox(height: 12),
+                      ..._buildConversationsSection(),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -51,6 +110,39 @@ class HomeScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  List<Widget> _buildConversationsSection() {
+    if (_isLoading) {
+      return const [
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: 24),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      ];
+    }
+    if (_error != null) {
+      return [
+        Text(_error!, style: TextStyle(color: Colors.red.shade700)),
+        const SizedBox(height: 8),
+        TextButton(onPressed: _loadConversations, child: const Text('Retry')),
+      ];
+    }
+    if (_conversations.isEmpty) {
+      return [
+        Text(
+          'No conversations yet. Start a new chat above!',
+          style: TextStyle(fontSize: 14, color: AppColors.onSurfaceVariant),
+        ),
+      ];
+    }
+    return _conversations
+        .take(_maxShown)
+        .map((c) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _buildConversationTile(context, c),
+            ))
+        .toList();
   }
 
   Widget _buildTopBar() {
@@ -116,7 +208,8 @@ class HomeScreen extends StatelessWidget {
 
   Widget _buildStartChatCard(BuildContext context) {
     return GestureDetector(
-      onTap: () => Navigator.of(context).pushNamed('/chat'),
+      // No conversationId = brand-new conversation.
+      onTap: () => _openChat(),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(24),
@@ -186,18 +279,9 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildConversationTile(BuildContext context, _ConversationPreview conversation) {
+  Widget _buildConversationTile(BuildContext context, ConversationSummary c) {
     return GestureDetector(
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => ChatScreen(
-              conversationTitle: conversation.title,
-              initialMessages: [], // TODO: fetch real messages for this conversation
-            ),
-          ),
-        );
-      },
+      onTap: () => _openChat(conversationId: c.id, title: c.title),
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -222,7 +306,9 @@ class HomeScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    conversation.title,
+                    c.title.isEmpty ? 'Untitled chat' : c.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
@@ -231,7 +317,7 @@ class HomeScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    conversation.timestamp,
+                    _formatTimestamp(c.updatedAt),
                     style: TextStyle(fontSize: 13, color: AppColors.onSurfaceVariant),
                   ),
                 ],
@@ -242,11 +328,4 @@ class HomeScreen extends StatelessWidget {
       ),
     );
   }
-}
-
-class _ConversationPreview {
-  final String title;
-  final String timestamp;
-
-  const _ConversationPreview({required this.title, required this.timestamp});
 }

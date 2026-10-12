@@ -1,12 +1,11 @@
 """
 test_chat.py
 
-Basic tests for POST /chat. Two things get mocked so tests run instantly
-with no network calls:
+Tests for POST /chat. Mocked so tests run instantly with no network calls:
   1. firebase_auth.verify_id_token  -> require_auth's token check
   2. the Firestore users/{uid} lookup that require_auth also does
-     (it reads the user's role after verifying the token)
-  3. gemini_service.get_chat_reply -> so we never call the real Gemini API
+  3. get_chat_reply, get_relevant_chunks -> no real Gemini or ChromaDB
+  4. create_conversation, save_message -> no real Firestore writes
 
 Run from the `backend/` directory: `pytest`
 """
@@ -30,9 +29,7 @@ def auth_headers(token="fake-valid-token"):
 
 
 def _mock_successful_auth(mock_verify, mock_db):
-    """Configures the two auth-related mocks to simulate a valid,
-    logged-in student. Reused across the tests that need to get past
-    @require_auth to reach the endpoint's own logic."""
+    """Simulates a valid, logged-in student so tests get past @require_auth."""
     mock_verify.return_value = {"uid": "test-user-123"}
 
     mock_doc = MagicMock()
@@ -60,10 +57,15 @@ def test_chat_rejects_empty_message(mock_reply, mock_verify, mock_db, client):
     mock_reply.assert_not_called()  # should fail validation before calling Gemini
 
 
+@patch("app.routes.chat.get_relevant_chunks", return_value=[])
+@patch("app.routes.chat.save_message")
+@patch("app.routes.chat.create_conversation", return_value="convo-1")
 @patch("app.middleware.auth.db")
 @patch("app.middleware.auth.firebase_auth.verify_id_token")
 @patch("app.routes.chat.get_chat_reply")
-def test_chat_returns_reply_on_success(mock_reply, mock_verify, mock_db, client):
+def test_chat_returns_reply_and_saves_messages(
+    mock_reply, mock_verify, mock_db, mock_create, mock_save, mock_chunks, client
+):
     _mock_successful_auth(mock_verify, mock_db)
     mock_reply.return_value = "The library closes at 10pm on weekdays."
 
@@ -73,5 +75,15 @@ def test_chat_returns_reply_on_success(mock_reply, mock_verify, mock_db, client)
         headers=auth_headers(),
     )
 
+    body = response.get_json()
     assert response.status_code == 200
-    assert response.get_json()["reply"] == "The library closes at 10pm on weekdays."
+    assert body["reply"] == "The library closes at 10pm on weekdays."
+    assert body["conversation_id"] == "convo-1"
+    assert body["saved"] is True
+
+    # New conversation created under the verified uid, from the first message
+    mock_create.assert_called_once_with("test-user-123", "What time does the library close?")
+
+    # Both sides of the exchange saved, under the token's uid
+    mock_save.assert_any_call("test-user-123", "convo-1", "user", "What time does the library close?")
+    mock_save.assert_any_call("test-user-123", "convo-1", "assistant", "The library closes at 10pm on weekdays.")

@@ -32,4 +32,7 @@ def create_app():
     from app.routes.documents import documents_bp
     app.register_blueprint(documents_bp)
 
+    from app.routes.conversations import conversations_bp
+    app.register_blueprint(conversations_bp)
+    
     return app

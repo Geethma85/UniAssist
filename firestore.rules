@@ -18,7 +18,17 @@ service cloud.firestore {
 
       // No client-side deletes
       allow delete: if false;
+
+            // Conversations (and their messages) live under the user's own path.
+      // Clients may read their own; only the backend (Admin SDK) writes.
+      match /conversations/{document=**} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow write: if false;
+      }
+      
     }
+
+    
 
     // Default deny — anything not explicitly matched above is blocked
     match /{document=**} {
