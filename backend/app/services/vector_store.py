@@ -131,3 +131,16 @@ def list_documents() -> list[dict]:
                 entry["upload_date"] = date
 
     return sorted(documents.values(), key=lambda d: d["upload_date"], reverse=True)
+
+def delete_document(document_id: str) -> int:
+    """
+    Delete all chunks belonging to one document.
+    Returns how many chunks were deleted (0 means the id was unknown).
+    """
+    collection = get_collection()
+    existing = collection.get(where={"document_id": document_id}, include=[])
+    ids = existing.get("ids") or []
+    if not ids:
+        return 0
+    collection.delete(ids=ids)
+    return len(ids)
