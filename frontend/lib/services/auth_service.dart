@@ -86,6 +86,19 @@ class AuthService {
     };
   }
 
+    /// Returns the signed-in user's role ('student' or 'admin') from Firestore.
+  /// Falls back to 'student' if anything is missing or fails, so a problem
+  /// can only ever HIDE the admin button, never show it by mistake.
+  Future<String> getCurrentRole() async {
+    final user = _auth.currentUser;
+    if (user == null) return 'student';
+    try {
+      final doc = await _firestore.collection('users').doc(user.uid).get();
+      return (doc.data()?['role'] as String?) ?? 'student';
+    } catch (_) {
+      return 'student';
+    }
+  }
   /// Signs the current user out.
   Future<void> logout() async {
     await _auth.signOut();
