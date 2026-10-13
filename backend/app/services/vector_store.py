@@ -98,3 +98,36 @@ def get_relevant_chunks(question: str, top_k: int = 3) -> list[dict]:
                 "distance": distance,
             })
     return relevant
+
+def list_documents() -> list[dict]:
+    """
+    Group all stored chunks by document_id and return one entry per document:
+    {"document_id", "filename", "upload_date", "chunk_count"}, newest first.
+    Returns [] if nothing is stored.
+    """
+    collection = get_collection()
+    results = collection.get(include=["metadatas"])
+    metadatas = results.get("metadatas") or []
+
+    documents = {}
+    for meta in metadatas:
+        doc_id = meta.get("document_id")
+        if not doc_id:
+            continue  # skip chunks without an id (very old data)
+
+        date = meta.get("upload_date", "")
+        entry = documents.get(doc_id)
+        if entry is None:
+            documents[doc_id] = {
+                "document_id": doc_id,
+                "filename": meta.get("filename", "unknown"),
+                "upload_date": date,
+                "chunk_count": 1,
+            }
+        else:
+            entry["chunk_count"] += 1
+            # keep the earliest date (ISO strings sort correctly as text)
+            if date and (not entry["upload_date"] or date < entry["upload_date"]):
+                entry["upload_date"] = date
+
+    return sorted(documents.values(), key=lambda d: d["upload_date"], reverse=True)
