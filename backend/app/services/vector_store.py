@@ -38,10 +38,11 @@ def store_document_chunks(filename: str, chunks: list[str]) -> str:
 
     embeddings = model.encode(chunks).tolist()
     ids = [f"{document_id}_{i}" for i in range(len(chunks))]
+    uploaded_at = datetime.now(timezone.utc).isoformat()
     metadatas = [
         {
             "filename": filename,
-            "upload_date": datetime.now(timezone.utc).isoformat(),
+            "upload_date": uploaded_at,
             "chunk_index": i,
             "document_id": document_id,
         }
