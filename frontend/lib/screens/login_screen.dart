@@ -16,7 +16,7 @@ class AppColors {
   static const onSurfaceVariant = Color(0xFF464555);
   static const outline = Color(0xFF777587);
   static const outlineVariant = Color(0xFFC7C4D8);
-  static const skyBackground = Color(0xFFF4F8FF);
+  static const skyBackground = Color(0xFFDCEBFF);
   static const skyLight = Color(0xFFE8F1FF);
   static const skyMid = Color(0xFFD3E4FF);
   static const skyBorder = Color(0xFFBFD6F6);
