@@ -3,6 +3,7 @@ import 'login_screen.dart' show AppColors;
 import '../widgets/app_bottom_nav.dart';
 import '../services/api_service.dart';
 import 'chat_screen.dart';
+import '../services/auth_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -21,11 +22,14 @@ class _HomeScreenState extends State<HomeScreen> {
   List<ConversationSummary> _conversations = [];
   bool _isLoading = true;
   String? _error;
+    bool _isAdmin = false;
+    final _authService = AuthService();
 
   @override
   void initState() {
     super.initState();
     _loadConversations();
+    _loadRole();  
   }
 
   Future<void> _loadConversations() async {
@@ -47,6 +51,11 @@ class _HomeScreenState extends State<HomeScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _loadRole() async {
+    final role = await _authService.getCurrentRole();
+    if (mounted) setState(() => _isAdmin = role == 'admin');
   }
 
   /// Option A: wait for the pushed screen to close, then reload the list
@@ -96,6 +105,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       _buildWelcomeHeader(),
                       const SizedBox(height: 20),
                       _buildStartChatCard(context),
+                      if (_isAdmin) ...[
+                        const SizedBox(height: 12),
+                        _buildAdminCard(context),
+                      ],
                       const SizedBox(height: 28),
                       _buildRecentConversationsHeader(context),
                       const SizedBox(height: 12),
@@ -245,6 +258,38 @@ class _HomeScreenState extends State<HomeScreen> {
               style: TextStyle(fontSize: 15, color: AppColors.onSurfaceVariant),
             ),
             const SizedBox(height: 20),
+            Icon(Icons.arrow_forward, color: AppColors.onSurface),
+          ],
+        ),
+      ),
+    );
+  }
+
+    Widget _buildAdminCard(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Navigator.of(context).pushNamed('/admin-documents'),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.outlineVariant.withOpacity(0.4)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.folder_open, color: AppColors.primary),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Manage documents',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.onSurface,
+                ),
+              ),
+            ),
             Icon(Icons.arrow_forward, color: AppColors.onSurface),
           ],
         ),

@@ -38,10 +38,11 @@ def store_document_chunks(filename: str, chunks: list[str]) -> str:
 
     embeddings = model.encode(chunks).tolist()
     ids = [f"{document_id}_{i}" for i in range(len(chunks))]
+    uploaded_at = datetime.now(timezone.utc).isoformat()
     metadatas = [
         {
             "filename": filename,
-            "upload_date": datetime.now(timezone.utc).isoformat(),
+            "upload_date": uploaded_at,
             "chunk_index": i,
             "document_id": document_id,
         }
@@ -97,3 +98,49 @@ def get_relevant_chunks(question: str, top_k: int = 3) -> list[dict]:
                 "distance": distance,
             })
     return relevant
+
+def list_documents() -> list[dict]:
+    """
+    Group all stored chunks by document_id and return one entry per document:
+    {"document_id", "filename", "upload_date", "chunk_count"}, newest first.
+    Returns [] if nothing is stored.
+    """
+    collection = get_collection()
+    results = collection.get(include=["metadatas"])
+    metadatas = results.get("metadatas") or []
+
+    documents = {}
+    for meta in metadatas:
+        doc_id = meta.get("document_id")
+        if not doc_id:
+            continue  # skip chunks without an id (very old data)
+
+        date = meta.get("upload_date", "")
+        entry = documents.get(doc_id)
+        if entry is None:
+            documents[doc_id] = {
+                "document_id": doc_id,
+                "filename": meta.get("filename", "unknown"),
+                "upload_date": date,
+                "chunk_count": 1,
+            }
+        else:
+            entry["chunk_count"] += 1
+            # keep the earliest date (ISO strings sort correctly as text)
+            if date and (not entry["upload_date"] or date < entry["upload_date"]):
+                entry["upload_date"] = date
+
+    return sorted(documents.values(), key=lambda d: d["upload_date"], reverse=True)
+
+def delete_document(document_id: str) -> int:
+    """
+    Delete all chunks belonging to one document.
+    Returns how many chunks were deleted (0 means the id was unknown).
+    """
+    collection = get_collection()
+    existing = collection.get(where={"document_id": document_id}, include=[])
+    ids = existing.get("ids") or []
+    if not ids:
+        return 0
+    collection.delete(ids=ids)
+    return len(ids)

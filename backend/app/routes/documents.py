@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from app.middleware.auth import require_admin  # adjust import if your path differs
 from app.services.text_extraction import extract_text, ExtractionError
 from app.services.chunking import chunk_text
-from app.services.vector_store import store_document_chunks
+from app.services.vector_store import store_document_chunks, list_documents, delete_document
 
 documents_bp = Blueprint("documents", __name__)
 
@@ -42,3 +42,24 @@ def upload_document():
         "filename": uploaded.filename,
         "chunk_count": len(chunks),
     }), 201
+
+
+@documents_bp.route("/admin/documents/<doc_id>", methods=["DELETE"])
+@require_admin
+def remove_document(doc_id):
+    try:
+        deleted = delete_document(doc_id)
+    except Exception:
+        return jsonify({"error": "Could not delete document."}), 500
+    if deleted == 0:
+        return jsonify({"error": "Document not found."}), 404
+    return jsonify({"message": "Document deleted.", "chunks_deleted": deleted}), 200
+
+@documents_bp.route("/admin/documents", methods=["GET"])
+@require_admin
+def get_documents():
+    try:
+        documents = list_documents()
+    except Exception:
+        return jsonify({"error": "Could not load documents."}), 500
+    return jsonify({"documents": documents}), 200

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/chat_message.dart';
+import 'dart:typed_data';
 
 class ApiException implements Exception {
   final String message;
@@ -41,6 +42,29 @@ class ChatReply {
   ChatReply({required this.reply, required this.conversationId, required this.saved});
 }
 
+class AdminDocument {
+  final String id;
+  final String filename;
+  final int chunkCount;
+  final DateTime? uploadDate;
+
+  AdminDocument({
+    required this.id,
+    required this.filename,
+    required this.chunkCount,
+    this.uploadDate,
+  });
+
+  factory AdminDocument.fromJson(Map<String, dynamic> json) => AdminDocument(
+        id: json['document_id'] as String,
+        filename: (json['filename'] as String?) ?? 'unknown',
+        chunkCount: (json['chunk_count'] as int?) ?? 0,
+        uploadDate: (json['upload_date'] as String?) == null
+            ? null
+            : DateTime.tryParse(json['upload_date'] as String)?.toLocal(),
+      );
+}
+
 class ApiService {
   // localhost works for Chrome. Android emulator: http://10.0.2.2:5000
   static const String baseUrl = 'http://localhost:5000';
@@ -58,7 +82,7 @@ class ApiService {
 
   static Map<String, dynamic> _decode(http.Response response) {
     final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-    if (response.statusCode != 200) {
+    if (response.statusCode != 200 && response.statusCode != 201) {
       throw ApiException(
           (decoded['error'] as String?) ?? 'Something went wrong. Please try again.');
     }
@@ -103,5 +127,47 @@ class ApiService {
     return (data['messages'] as List)
         .map((m) => ChatMessage.fromJson(m as Map<String, dynamic>))
         .toList();
+  }
+
+    // Token only: for multipart uploads, http sets Content-Type itself.
+  static Future<Map<String, String>> _authHeader() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw ApiException('Not signed in');
+    final idToken = await user.getIdToken();
+    return {'Authorization': 'Bearer $idToken'};
+  }
+
+  static Future<List<AdminDocument>> listDocuments() async {
+    final response = await http
+        .get(Uri.parse('$baseUrl/admin/documents'), headers: await _headers())
+        .timeout(_timeout);
+    final data = _decode(response);
+    return (data['documents'] as List)
+        .map((d) => AdminDocument.fromJson(d as Map<String, dynamic>))
+        .toList();
+  }
+
+  static Future<void> uploadDocument({
+    required String filename,
+    required Uint8List bytes,
+  }) async {
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('$baseUrl/admin/documents/upload'),
+    )
+      ..headers.addAll(await _authHeader())
+      ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
+    // Longer timeout: the server embeds every chunk before replying.
+    final streamed = await request.send().timeout(const Duration(seconds: 90));
+    final response = await http.Response.fromStream(streamed);
+    _decode(response);
+  }
+
+  static Future<void> deleteDocument(String documentId) async {
+    final response = await http
+        .delete(Uri.parse('$baseUrl/admin/documents/$documentId'),
+            headers: await _headers())
+        .timeout(_timeout);
+    _decode(response);
   }
 }
