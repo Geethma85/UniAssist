@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/chat_message.dart';
 import '../services/api_service.dart';
+import '../widgets/app_bottom_nav.dart';
 
 class ChatScreen extends StatefulWidget {
   /// null = start a brand-new conversation. The backend creates the id
@@ -95,6 +96,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text(widget.conversationTitle ?? "UniAssist Chat")),
+      bottomNavigationBar: const AppBottomNav(currentTab: AppTab.chat),
       body: Column(
         children: [
           if (_errorMessage != null)
