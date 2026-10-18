@@ -99,6 +99,17 @@ class AuthService {
       return 'student';
     }
   }
+  
+  Future<String> getCurrentName() async {
+    final user = _auth.currentUser;
+    if (user == null) return '';
+    try {
+      final doc = await _firestore.collection('users').doc(user.uid).get();
+      return ((doc.data()?['name'] as String?) ?? '').trim();
+    } catch (_) {
+      return '';
+    }
+  }
   /// Signs the current user out.
   Future<void> logout() async {
     await _auth.signOut();

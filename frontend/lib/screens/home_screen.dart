@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'login_screen.dart' show AppColors;
 import '../widgets/app_bottom_nav.dart';
 import '../services/api_service.dart';
-import 'chat_screen.dart';
 import '../services/auth_service.dart';
+import 'chat_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -13,24 +13,27 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // TODO: replace with real signed-in user's display name from AuthService
-  static const String _userFirstName = 'Alex';
-
   // Home only shows the latest few; "View all" is for the full list.
   static const int _maxShown = 5;
+
+  final _authService = AuthService();
 
   List<ConversationSummary> _conversations = [];
   bool _isLoading = true;
   String? _error;
-    bool _isAdmin = false;
-    final _authService = AuthService();
+
+  bool _isAdmin = false;
+  int? _docCount; // null = unknown (not loaded yet, or the request failed)
+  String _fullName = '';
 
   @override
   void initState() {
     super.initState();
     _loadConversations();
-    _loadRole();  
+    _loadProfile();
   }
+
+  // ---------- data ----------
 
   Future<void> _loadConversations() async {
     setState(() {
@@ -53,12 +56,36 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _loadRole() async {
+  Future<void> _loadProfile() async {
     final role = await _authService.getCurrentRole();
-    if (mounted) setState(() => _isAdmin = role == 'admin');
+    final name = await _authService.getCurrentName();
+    if (!mounted) return;
+    setState(() {
+      _isAdmin = role == 'admin';
+      _fullName = name;
+    });
+    if (_isAdmin) _loadDocCount();
   }
 
-  /// Option A: wait for the pushed screen to close, then reload the list
+  Future<void> _loadDocCount() async {
+    try {
+      final docs = await ApiService.listDocuments();
+      if (mounted) setState(() => _docCount = docs.length);
+    } catch (_) {
+      if (mounted) setState(() => _docCount = null);
+    }
+  }
+
+  Future<void> _refresh() async {
+    await Future.wait([
+      _loadConversations(),
+      if (_isAdmin) _loadDocCount(),
+    ]);
+  }
+
+  // ---------- navigation ----------
+
+  /// Wait for the pushed screen to close, then reload the list
   /// so new or updated conversations show up.
   Future<void> _openChat({String? conversationId, String? title}) async {
     await Navigator.of(context).push(
@@ -70,6 +97,24 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
     if (mounted) _loadConversations();
+  }
+
+  Future<void> _openAdminDocuments() async {
+    await Navigator.of(context).pushNamed('/admin-documents');
+    if (mounted) _loadDocCount(); // the admin may have added or deleted files
+  }
+
+  // ---------- helpers ----------
+
+  String get _firstName =>
+      _fullName.isEmpty ? '' : _fullName.split(RegExp(r'\s+')).first;
+
+  String get _initials {
+    final parts =
+        _fullName.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    if (parts.isEmpty) return 'U';
+    if (parts.length == 1) return parts.first[0].toUpperCase();
+    return (parts.first[0] + parts[1][0]).toUpperCase();
   }
 
   String _formatTimestamp(DateTime? t) {
@@ -84,16 +129,18 @@ class _HomeScreenState extends State<HomeScreen> {
     return '${t.day}/${t.month}/${t.year}';
   }
 
+  // ---------- build ----------
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.skyBackground,
       body: SafeArea(
         child: Column(
           children: [
             Expanded(
               child: RefreshIndicator(
-                onRefresh: _loadConversations,
+                onRefresh: _refresh,
                 child: SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.all(20),
@@ -104,13 +151,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       const SizedBox(height: 24),
                       _buildWelcomeHeader(),
                       const SizedBox(height: 20),
-                      _buildStartChatCard(context),
+                      _buildStartChatCard(),
                       if (_isAdmin) ...[
-                        const SizedBox(height: 12),
-                        _buildAdminCard(context),
+                        const SizedBox(height: 14),
+                        _buildAdminCard(),
                       ],
                       const SizedBox(height: 28),
-                      _buildRecentConversationsHeader(context),
+                      _buildRecentConversationsHeader(),
                       const SizedBox(height: 12),
                       ..._buildConversationsSection(),
                     ],
@@ -122,6 +169,261 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildTopBar() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF3B82F6), AppColors.brandBlue],
+                ),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.school, color: Colors.white, size: 26),
+            ),
+            const SizedBox(width: 10),
+            RichText(
+              text: const TextSpan(
+                style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+                children: [
+                  TextSpan(text: 'Uni', style: TextStyle(color: AppColors.navy)),
+                  TextSpan(
+                      text: 'Assist',
+                      style: TextStyle(color: AppColors.brandBlue)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        Container(
+          width: 44,
+          height: 44,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: AppColors.skyLight,
+            shape: BoxShape.circle,
+            border: Border.all(color: AppColors.skyBorder, width: 2),
+          ),
+          child: Text(
+            _initials,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              color: AppColors.brandBlue,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWelcomeHeader() {
+    final greeting = _firstName.isEmpty
+        ? 'Welcome back! 👋'
+        : 'Welcome back, $_firstName! 👋';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          greeting,
+          style: const TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.bold,
+            color: AppColors.navy,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'How can I assist you with your studies today?',
+          style: TextStyle(fontSize: 16, color: AppColors.onSurfaceVariant),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStartChatCard() {
+    return GestureDetector(
+      // No conversationId = brand-new conversation.
+      onTap: () => _openChat(),
+      child: Container(
+        width: double.infinity,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
+          ),
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Stack(
+          children: [
+            // Decorative soft circle, top-right.
+            Positioned(
+              top: -40,
+              right: -30,
+              child: Container(
+                width: 140,
+                height: 140,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.12),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Icon(Icons.chat_bubble_outline,
+                        color: AppColors.brandBlue, size: 26),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Start New Chat',
+                    style: TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Ask me about your courses, campus info, or tasks.',
+                    style: TextStyle(fontSize: 16, color: Colors.white70),
+                  ),
+                  const SizedBox(height: 16),
+                  Divider(color: Colors.white.withValues(alpha: 0.3)),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Tap to begin new prompt',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.arrow_forward,
+                            color: AppColors.brandBlue),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Shown to admins only. A UI convenience: the real protection is the
+  /// backend's @require_admin on every /admin route.
+  Widget _buildAdminCard() {
+    final subtitle = _docCount == null
+        ? 'Upload and remove course files'
+        : _docCount == 1
+            ? '1 document indexed'
+            : '$_docCount documents indexed';
+    return GestureDetector(
+      onTap: _openAdminDocuments,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.navy,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.folder, color: AppColors.brandBlue),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Manage Documents',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(fontSize: 13, color: Colors.white70),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Colors.white),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRecentConversationsHeader() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        const Text(
+          'Recent Conversations',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: AppColors.navy,
+          ),
+        ),
+        GestureDetector(
+          onTap: () => Navigator.of(context).pushNamed('/chat-history'),
+          child: const Text(
+            'View all',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppColors.brandBlue,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -153,218 +455,70 @@ class _HomeScreenState extends State<HomeScreen> {
         .take(_maxShown)
         .map((c) => Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: _buildConversationTile(context, c),
+              child: _buildConversationTile(c),
             ))
         .toList();
   }
 
-  Widget _buildTopBar() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Row(
-          children: [
-            SizedBox(
-              height: 28,
-              width: 28,
-              child: Image.asset(
-                'assets/images/uniassist_logo.png',
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) => const Icon(
-                  Icons.school_outlined,
-                  color: AppColors.primary,
-                  size: 26,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'UniAssist',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: AppColors.primary,
-              ),
-            ),
-          ],
-        ),
-        // TODO: replace with real profile photo from Firebase user / Firestore
-        CircleAvatar(
-          radius: 20,
-          backgroundColor: AppColors.surfaceContainerLow,
-          child: Icon(Icons.person, color: AppColors.onSurfaceVariant),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildWelcomeHeader() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Welcome $_userFirstName!',
-          style: TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.bold,
-            color: AppColors.onSurface,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          'How can I assist you with your studies today?',
-          style: TextStyle(fontSize: 16, color: AppColors.onSurfaceVariant),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStartChatCard(BuildContext context) {
-    return GestureDetector(
-      // No conversationId = brand-new conversation.
-      onTap: () => _openChat(),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceContainerLowest,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.outlineVariant.withOpacity(0.4)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(28),
-              ),
-              child: const Icon(Icons.chat_bubble, color: Colors.white, size: 26),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Start New Chat',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: AppColors.onSurface,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Ask me about your courses, campus info, or tasks.',
-              style: TextStyle(fontSize: 15, color: AppColors.onSurfaceVariant),
-            ),
-            const SizedBox(height: 20),
-            Icon(Icons.arrow_forward, color: AppColors.onSurface),
-          ],
-        ),
-      ),
-    );
-  }
-
-    Widget _buildAdminCard(BuildContext context) {
-    return GestureDetector(
-      onTap: () => Navigator.of(context).pushNamed('/admin-documents'),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.outlineVariant.withOpacity(0.4)),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.folder_open, color: AppColors.primary),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'Manage documents',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.onSurface,
-                ),
-              ),
-            ),
-            Icon(Icons.arrow_forward, color: AppColors.onSurface),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildRecentConversationsHeader(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          'Recent Conversations',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: AppColors.onSurface,
-          ),
-        ),
-        GestureDetector(
-          onTap: () => Navigator.of(context).pushNamed('/chat-history'),
-          child: Text(
-            'View all',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppColors.primary,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildConversationTile(BuildContext context, ConversationSummary c) {
+  Widget _buildConversationTile(ConversationSummary c) {
     return GestureDetector(
       onTap: () => _openChat(conversationId: c.id, title: c.title),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: AppColors.surfaceContainerLowest,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.outlineVariant.withOpacity(0.4)),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.skyBorder.withValues(alpha: 0.7)),
         ),
         child: Row(
           children: [
             Container(
-              width: 40,
-              height: 40,
+              width: 48,
+              height: 48,
               decoration: BoxDecoration(
-                color: AppColors.surfaceContainerLow,
-                shape: BoxShape.circle,
+                color: AppColors.skyLight,
+                borderRadius: BorderRadius.circular(14),
               ),
-              child: Icon(Icons.history, size: 20, color: AppColors.onSurfaceVariant),
+              child: const Icon(Icons.chat_bubble_outline,
+                  size: 22, color: AppColors.brandBlue),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    c.title.isEmpty ? 'Untitled chat' : c.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.onSurface,
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          c.title.isEmpty ? 'Untitled chat' : c.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.navy,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _formatTimestamp(c.updatedAt),
+                        style: TextStyle(
+                            fontSize: 12, color: AppColors.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                  if (c.lastMessagePreview.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      c.lastMessagePreview,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 13, color: AppColors.onSurfaceVariant),
                     ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    _formatTimestamp(c.updatedAt),
-                    style: TextStyle(fontSize: 13, color: AppColors.onSurfaceVariant),
-                  ),
+                  ],
                 ],
               ),
             ),
