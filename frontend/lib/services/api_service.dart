@@ -66,8 +66,12 @@ class AdminDocument {
 }
 
 class ApiService {
-  // localhost works for Chrome. Android emulator: http://10.0.2.2:5000
-  static const String baseUrl = 'http://localhost:5000';
+  // Set at run time: flutter run --dart-define=API_BASE_URL=http://<pc-ip>:5000
+  // Defaults to localhost, which works for Chrome. Android emulator: http://10.0.2.2:5000
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://localhost:5000',
+  );
   static const Duration _timeout = Duration(seconds: 25);
 
   static Future<Map<String, String>> _headers() async {
