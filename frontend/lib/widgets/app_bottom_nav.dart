@@ -21,7 +21,10 @@ class AppBottomNav extends StatelessWidget {
       AppTab.profile: '/profile',
     };
 
-    Navigator.of(context).pushReplacementNamed(routes[tab]!);
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        routes[tab]!,
+        (route) => false,
+      );
   }
 
   @override
