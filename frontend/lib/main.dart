@@ -8,6 +8,7 @@ import 'screens/edit_profile_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'screens/admin_documents_screen.dart';
+import 'screens/chat_history_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,6 +35,7 @@ class UniAssistApp extends StatelessWidget {
         '/profile': (context) => const ProfileScreen(),
         '/edit-profile': (context) => const EditProfileScreen(),
         '/admin-documents': (context) => const AdminDocumentsScreen(),
+                '/chat-history': (context) => const ChatHistoryScreen(),
       },
     );
   }
