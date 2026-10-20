@@ -1,204 +1,151 @@
-# UniAssist 🎓
+# UniAssist
 
-An AI-powered university student assistant that answers general academic questions and provides accurate, source-grounded answers from institutional documents using Retrieval-Augmented Generation (RAG).
+An AI assistant for university students. Students chat with UniAssist about courses and campus information; admins upload official documents (policies, timetables, handbooks), and the assistant answers from those documents using retrieval-augmented generation (RAG). When the documents don't contain the answer, it says so instead of guessing.
 
----
+> Portfolio project built to practise full-stack development, AI integration and testing.
 
-##  Overview
+<!-- TODO: add 3 screenshots to docs/screenshots/, then delete this line and the two comment markers around the table
+| Home | Chat | Manage documents (admin) |
+|---|---|---|
+| ![Home](docs/screenshots/home.png) | ![Chat](docs/screenshots/chat.png) | ![Admin](docs/screenshots/admin-documents.png) |
+-->
 
-UniAssist lets students chat with an AI assistant about academic and university-related questions. It combines two response modes:
 
-- **General questions** → answered directly by an LLM (Google Gemini)
-- **University-specific questions** (module handbooks, academic regulations, exam guidelines, etc.) → answered using a **RAG pipeline**, where admin-uploaded documents are chunked, embedded, and retrieved to ground the AI's answer in real institutional content, with sources shown
+## Features
 
-The app supports two roles — **Student** and **Admin** — with role-based access control enforced on both the frontend and backend.
+**Students**
+- Email/password sign-up and login (Firebase Authentication)
+- Chat with an assistant that answers from uploaded documents and admits uncertainty when it has no source
+- Conversation history saved per user, with a full history screen and a recent-conversations list on Home
 
----
+**Admins**
+- Upload `.txt` and `.pdf` documents (validated, chunked, embedded and indexed)
+- List indexed documents with upload date and chunk count
+- Delete a document (all of its chunks are removed)
+- Admin screen is reachable only for admin accounts in the UI, and every `/admin` route is also enforced on the backend
 
-##  Features
+## How it works
 
-- 🔐 Secure authentication (Firebase Auth) with role-based access control
-- 💬 Conversational AI chatbot with context-aware, multi-turn conversations
-- 📚 Retrieval-Augmented Generation (RAG) for document-grounded answers with cited sources
-- 🗂️ Admin document management (upload, view, delete institutional documents)
-- 🕘 Persistent chat history per user
-- 🛡️ Firestore security rules preventing unauthorized data access and role self-escalation
-- ✅ Backend test coverage (pytest) for auth, validation, and core logic
+```
+Flutter app (Chrome / Android)
+        |  HTTPS + Firebase ID token (Authorization: Bearer ...)
+        v
+Flask REST API  --->  Firebase Auth (verify token)  --->  Firestore (users, roles, chat history)
+        |
+        +--->  ChromaDB (document chunks + embeddings, all-MiniLM-L6-v2)
+        |
+        +--->  Gemini API (answer generation, google-genai SDK)
+```
 
-> Some features above are in progress — see [Project Status](#-project-status) for what's shipped vs. planned.
+1. An admin uploads a document. The backend extracts the text, splits it into 500-character chunks with 80 characters of overlap, embeds each chunk with `all-MiniLM-L6-v2`, and stores them in ChromaDB. Every upload gets its own `document_id` stored in each chunk's metadata, so two uploads with the same filename stay separate.
+2. A student asks a question. The backend embeds it, retrieves the closest chunks (filtered by a distance threshold), and sends them to Gemini with a prompt that tells the model to say it doesn't know when the context doesn't cover the question.
+3. The conversation is saved in Firestore, written by the backend only.
 
----
+## Tech stack
 
-##  Tech Stack
-
-| Layer | Technology |
+| Layer | Tools |
 |---|---|
-| Frontend | Flutter (Dart) |
-| Backend | Python, Flask (REST API) |
-| Authentication | Firebase Authentication |
-| Database | Firebase Firestore |
-| AI / LLM | Google Gemini API (free tier) |
-| RAG / Embeddings | `sentence-transformers` (local embeddings) |
-| Vector Database | ChromaDB |
-| API Testing | Postman |
-| Backend Testing | pytest |
-| Version Control | Git / GitHub |
+| Frontend | Flutter (Dart), `http`, `file_picker` |
+| Backend | Python, Flask REST API |
+| Auth and data | Firebase Authentication, Cloud Firestore |
+| AI | Gemini API (`google-genai` SDK), RAG |
+| Retrieval | `sentence-transformers` (`all-MiniLM-L6-v2`), ChromaDB |
+| Testing | pytest (29 tests) |
 
----
+## API overview
 
-##  Architecture
+All routes except `/health` require a Firebase ID token.
 
-```
-Flutter App
-     ↓
-Flask REST API  (@require_auth / @require_admin middleware)
-     ↓
-Service Layer
-     ↓
-AI / RAG Layer  →  Gemini API + ChromaDB (vector search)
-     ↓
-Firebase (Auth + Firestore)
-```
+| Method | Route | Access | Purpose |
+|---|---|---|---|
+| GET | `/health` | public | Health check |
+| POST | `/chat` | signed-in | Ask a question (RAG-enabled) |
+| GET | `/conversations` | signed-in | List my conversations |
+| GET | `/conversations/<id>` | signed-in | Messages of one conversation |
+| POST | `/admin/documents/upload` | admin | Upload and index a `.txt` / `.pdf` |
+| GET | `/admin/documents` | admin | List indexed documents |
+| DELETE | `/admin/documents/<doc_id>` | admin | Delete a document (404 if unknown) |
 
-The frontend never exposes secret API keys — all AI/service calls are routed through the Flask backend, which holds credentials in environment variables.
+## Getting started
 
----
-
-##  Project Structure
-
-```
-uniassist/
-├── backend/
-│   ├── app/
-│   │   ├── routes/        # API route definitions
-│   │   ├── services/      # Business logic (auth, chat, RAG)
-│   │   └── models/        # Data models
-│   ├── tests/              # pytest test suite
-│   ├── .env                # Environment variables (gitignored)
-│   ├── requirements.txt
-│   └── run.py
-├── frontend/
-│   └── lib/
-│       ├── screens/        # App screens (login, chat, profile, admin, etc.)
-│       ├── widgets/        # Reusable UI components
-│       └── services/       # API/Firebase client calls
-├── docs/                   # Additional project documentation
-└── README.md
-```
-
----
-
-##  Security
-
-- API keys and service account credentials stored in environment variables, never committed to source control
-- Firestore security rules restrict users to reading/writing only their own data, with the `role` field locked from client-side modification after account creation (prevents self-promotion to admin)
-- Backend routes protected by custom `@require_auth` and `@require_admin` decorators that verify Firebase ID tokens server-side
-- Input validation on all endpoints (message length, empty input, file type/size on uploads)
-- Generic, non-revealing error messages returned to clients; detailed errors logged server-side only
-- Login errors intentionally generic (e.g. wrong password vs. unknown account) to prevent user enumeration
-
----
-
-##  Getting Started
+<!-- TODO: verify every command in this section on a clean checkout -->
 
 ### Prerequisites
-- Flutter SDK
-- Python 3.10+
-- A Firebase project (Authentication + Firestore enabled)
-- A free [Google Gemini API key](https://aistudio.google.com/)
+- Python 3.13, Flutter SDK, a Firebase project (Authentication + Firestore), a Gemini API key
 
-### Backend Setup
+### Backend
 ```bash
 cd backend
 python -m venv venv
-source venv/bin/activate   # Windows: venv\Scripts\activate
-pip install -r requirements.txt
+source venv/Scripts/activate      # Windows (Git Bash). On macOS/Linux: source venv/bin/activate
+pip install -r requirements.txt   # TODO: confirm this file exists
 ```
-
-Create a `.env` file in `backend/`:
+Create `backend/.env` (never commit it):
 ```
-GEMINI_API_KEY=your_key_here
-FIREBASE_SERVICE_ACCOUNT_PATH=./serviceAccountKey.json
-FLASK_ENV=development
+GEMINI_API_KEY=your-key-here
+# TODO: add the variable your Firebase Admin setup reads (service account path?)
 ```
-
-Place your Firebase service account key at `backend/serviceAccountKey.json` (never committed — see `.gitignore`).
-
-Run the server:
+Run it:
 ```bash
-python run.py
+flask run
 ```
 
-### Frontend Setup
+### Frontend
 ```bash
 cd frontend
 flutter pub get
-flutterfire configure   # connects the app to your Firebase project
-flutter run
+flutter run -d chrome
 ```
 
----
+The Firebase client config (`firebase_options.dart`) is generated with FlutterFire for your own Firebase project.
 
-##  Testing
+### Running on an Android phone
+`localhost` on a phone means the phone itself, so the app needs a route to your computer.
 
-Backend logic is tested with `pytest` as each feature is built, covering:
-- Authentication middleware (missing/invalid/malformed tokens)
-- Input validation
-- Core API endpoint behavior
+- **USB (no network needed):** plug the phone in with USB debugging on, then
+  ```bash
+  adb reverse tcp:5000 tcp:5000
+  flutter run -d <device-id>
+  ```
+- **Same Wi-Fi or hotspot:** start Flask with `flask run --host=0.0.0.0`, then
+  ```bash
+  flutter run -d <device-id> --dart-define=API_BASE_URL=http://<your-computer-ip>:5000
+  ```
 
-Run tests:
+### Making an account an admin
+Admin accounts are set manually: in Firestore, open `users/<uid>` and set the string field `role` to `admin`. New sign-ups default to `student`.
+
+## Testing
+
 ```bash
 cd backend
-pytest
+pytest -v
 ```
 
-API endpoints are additionally tested manually via **Postman** for request/response correctness, authorization enforcement, and error handling.
+29 tests cover auth middleware, chat, conversations, text extraction, chunking, the vector store, and document management. The delete tests run against a real in-memory ChromaDB, so the real delete code executes (a mocked delete would pass even if the code were broken). I also checked that a deliberately broken delete makes the test fail.
 
----
+## Design decisions
 
-##  Project Status
+- **Documents are identified by a generated `document_id`, not the filename.** ChromaDB stores chunks, so each upload gets a UUID in every chunk's metadata. Duplicate filenames can't be confused, and delete removes exactly one upload.
+- **The backend is the security boundary.** The Flutter UI hides admin features from students for convenience only; `@require_admin` checks the role on every admin request.
+- **Fail closed on roles.** If the app can't read the role, it behaves as a student.
+- **Uploads send file bytes, not paths**, so the same code works on web and mobile.
+- **Honest answers over confident ones.** The prompt tells the model to say it lacks information when no retrieved chunk is relevant.
 
-This project is being built incrementally over a ~2-week MVP sprint. Current progress:
+## Known limitations
 
-**✅ Done**
-- Project structure and Git repository
-- Firebase Authentication (register, login, logout) — Flutter ↔ Firebase
-- Firestore security rules deployed and verified
-- Flask backend token verification middleware (`@require_auth`, `@require_admin`)
-- User profile screen wired to real Firestore data
-- Basic pytest coverage for auth middleware
+- The document list groups chunks in Python on every request; at larger scale, keep a documents collection in Firestore
+- The retrieval distance threshold (0.8) was tuned against a single document and should be re-tuned with more data
+- No conversation deletion
+- No email verification at sign-up
+- The Gemini free tier can rate-limit; the app then shows a generic error
+- Backend runs locally; no deployment yet
 
-**✅ Done**
-- Chatbot endpoint (Gemini API integration) and chat UI
+## Roadmap
+- Deploy the backend and point `API_BASE_URL` at it
+- Conversation deletion and rename
+- Email verification and password reset
+- Retrieval evaluation set to tune the threshold properly
 
-**📋 Planned**
-- RAG pipeline: document upload, chunking, embeddings, ChromaDB retrieval
-- Chat history persistence (Firestore)
-- Admin panel (document management, basic stats)
-- Expanded test coverage and Postman collection
-- Deployment
-
----
-
-##  Known Limitations
-
-- Uses the Gemini API free tier, which has request-rate limits unsuitable for high-traffic production use
-- Google Sign-In and password reset are UI placeholders, not yet functional
-- Firestore free tier / test-mode constraints mean this is a prototype, not a production-hardened deployment
-
----
-
-##  Future Improvements
-
-- Add automated CI test runs on push
-- Expand RAG to support more document types beyond PDF/text
-- Add real-time chat sync
-- Performance testing under concurrent load
-- Migrate to a paid LLM tier for production-grade rate limits
-
----
-
-## 📄 License
-
-This project is for educational and portfolio purposes.
-kdjh
+## Project workflow
+One feature per Git branch, merged into `main` by pull request once tested.
