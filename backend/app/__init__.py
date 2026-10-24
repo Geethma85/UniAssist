@@ -1,20 +1,26 @@
 import os
+from pathlib import Path
+
 from dotenv import load_dotenv
-load_dotenv()
 import firebase_admin
 from firebase_admin import credentials
 from flask import Flask
 from flask_cors import CORS
 
-# Initialize Firebase Admin SDK once, using the service account key.
-# Guarded with firebase_admin._apps so repeated create_app() calls
-# (e.g. one per pytest test) don't try to re-initialize and crash.
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BACKEND_DIR / ".env")
+
+
+def firebase_credential_path():
+    configured = os.getenv("FIREBASE_SERVICE_ACCOUNT_PATH", "").strip()
+    path = Path(configured or "serviceAccountKey.json").expanduser()
+    return path if path.is_absolute() else BACKEND_DIR / path
+
+
+# Initialize once, including when tests create multiple app instances.
 if not firebase_admin._apps:
-    cred_path = os.path.join(os.path.dirname(__file__), '..', 'serviceAccountKey.json')
-    cred = credentials.Certificate(cred_path)
+    cred = credentials.Certificate(str(firebase_credential_path()))
     firebase_admin.initialize_app(cred)
-
-
 def create_app():
     """Application factory. Keeps app creation testable (pytest can spin up
     fresh instances) instead of using a single global Flask object."""
