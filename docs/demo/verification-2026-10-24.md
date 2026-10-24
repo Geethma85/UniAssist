@@ -1,10 +1,10 @@
 # Verification — 24 October 2026
 
 Branch: fix/firebase-config-and-demo
-Starting commit: record using the command below.
+Starting commit: 0649ef066f07535ab0434a89ed9e7813cb9d212b.
 
 ## Passed
-- Backend baseline: 29 tests.
+- Backend baseline: 33 tests.
 - Backend after credential-path changes: 33 tests.
 - Flutter login-screen test: 1 passed after deferring Firebase access
   and correcting two login layout overflows.
@@ -28,7 +28,7 @@ Starting commit: record using the command below.
 - Latest recorded Flutter analysis: 23 informational notices.
   Analysis has not yet been repeated after the layout edits.
 - Clean-environment dependency installation has not been verified.
-- pip install / pip check summaries have not been recorded.
+- pip install / pip check No broken requirements found .
 - Paraphrased retrieval in a separate fresh conversation is unconfirmed.
 - Student-only admin visibility has not been explicitly verified.
 - Android setup instructions have not been tested today.
@@ -58,4 +58,4 @@ Starting commit: record using the command below.
 Evaluate retrieval and citations with a small repeatable question set,
 then improve misleading chat error messages.
 
-No deployment, pull request, or Firestore-record deletion performed.
+PR #15 opened. No deployment or Firestore-record deletion performed.

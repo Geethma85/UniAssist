@@ -145,7 +145,7 @@ cd backend
 ./venv/Scripts/python.exe -m pytest -v
 ```
 
-29 tests cover auth middleware, chat, conversations, text extraction, chunking, the vector store, and document management. The delete tests run against a real in-memory ChromaDB, so the real delete code executes (a mocked delete would pass even if the code were broken). I also checked that a deliberately broken delete makes the test fail.
+33 tests cover auth middleware, chat, conversations, text extraction, chunking, the vector store, and document management. The delete tests run against a real in-memory ChromaDB, so the real delete code executes (a mocked delete would pass even if the code were broken). I also checked that a deliberately broken delete makes the test fail.
 
 ## Design decisions
 
