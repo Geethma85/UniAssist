@@ -5,8 +5,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 /// UI screens should never call FirebaseAuth or Firestore directly —
 /// they call methods on this class instead.
 class AuthService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  FirebaseAuth get _auth => FirebaseAuth.instance;
+  FirebaseFirestore get _firestore => FirebaseFirestore.instance;
 
   /// Returns the currently signed-in user, or null if signed out.
   User? get currentUser => _auth.currentUser;

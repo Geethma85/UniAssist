@@ -1,16 +1,16 @@
-// Basic smoke test — confirms the app builds and renders without crashing.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
 import 'package:uniassist/main.dart';
+import 'package:uniassist/screens/login_screen.dart';
 
 void main() {
-  testWidgets('App builds without crashing', (WidgetTester tester) async {
+  testWidgets('App opens the login form without accessing Firebase',
+      (WidgetTester tester) async {
     await tester.pumpWidget(const UniAssistApp());
+    await tester.pumpAndSettle();
 
-    // Just confirms the widget tree built successfully.
-    // Replace/expand this once login/chat screens have real logic wired up.
-    expect(find.byType(UniAssistApp), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    expect(find.byType(LoginScreen), findsOneWidget);
+    expect(find.byType(TextFormField), findsNWidgets(2));
   });
 }
