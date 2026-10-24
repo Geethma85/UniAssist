@@ -4,11 +4,10 @@ An AI assistant for university students. Students chat with UniAssist about cour
 
 > Portfolio project built to practise full-stack development, AI integration and testing.
 
-<!-- TODO: add 3 screenshots to docs/screenshots/, then delete this line and the two comment markers around the table
 | Home | Chat | Manage documents (admin) |
 |---|---|---|
 | ![Home](docs/screenshots/home.png) | ![Chat](docs/screenshots/chat.png) | ![Admin](docs/screenshots/admin-documents.png) |
--->
+
 
 
 ## Features
@@ -50,7 +49,7 @@ Flask REST API  --->  Firebase Auth (verify token)  --->  Firestore (users, role
 | Auth and data | Firebase Authentication, Cloud Firestore |
 | AI | Gemini API (`google-genai` SDK), RAG |
 | Retrieval | `sentence-transformers` (`all-MiniLM-L6-v2`), ChromaDB |
-| Testing | pytest (29 tests) |
+| Testing | pytest (33 tests) |
 
 ## API overview
 
@@ -74,23 +73,47 @@ All routes except `/health` require a Firebase ID token.
 - Python 3.13, Flutter SDK, a Firebase project (Authentication + Firestore), a Gemini API key
 
 ### Backend
+From the repository root, using Git Bash on Windows:
+
 ```bash
 cd backend
 python -m venv venv
-source venv/Scripts/activate      # Windows (Git Bash). On macOS/Linux: source venv/bin/activate
-pip install -r requirements.txt   # TODO: confirm this file exists
-```
-Create `backend/.env` (never commit it):
-```
-GEMINI_API_KEY=your-key-here
-# TODO: add the variable your Firebase Admin setup reads (service account path?)
-```
-Run it:
-```bash
-flask run
+./venv/Scripts/python.exe -m pip install -r requirements.txt
 ```
 
+For a new setup, copy `.env.example` to `.env`. Keep an existing
+`.env` rather than overwriting it.
+
+Set these values in `backend/.env`:
+
+```dotenv
+GEMINI_API_KEY=your-key-here
+FIREBASE_SERVICE_ACCOUNT_PATH=./serviceAccountKey.json
+```
+
+Place your Firebase service-account JSON at the configured path.
+Relative paths resolve from `backend/`. If the variable is blank or
+unset, the default is `backend/serviceAccountKey.json`.
+
+Never commit `.env` or the service-account file.
+
+Start the backend:
+
+```bash
+./venv/Scripts/python.exe -m flask --app run run
+```
+
+In another terminal, verify startup:
+
+```bash
+curl http://127.0.0.1:5000/health
+```
+
+The response should contain `"status":"ok"`.
+
 ### Frontend
+
+In a separate terminal, from the repository root:
 ```bash
 cd frontend
 flutter pub get
@@ -102,7 +125,7 @@ The Firebase client config (`firebase_options.dart`) is generated with FlutterFi
 ### Running on an Android phone
 `localhost` on a phone means the phone itself, so the app needs a route to your computer.
 
-- **USB (no network needed):** plug the phone in with USB debugging on, then
+- **USB (no shared Wi-Fi needed):** plug the phone in with USB debugging on, then
   ```bash
   adb reverse tcp:5000 tcp:5000
   flutter run -d <device-id>
@@ -119,7 +142,7 @@ Admin accounts are set manually: in Firestore, open `users/<uid>` and set the st
 
 ```bash
 cd backend
-pytest -v
+./venv/Scripts/python.exe -m pytest -v
 ```
 
 29 tests cover auth middleware, chat, conversations, text extraction, chunking, the vector store, and document management. The delete tests run against a real in-memory ChromaDB, so the real delete code executes (a mocked delete would pass even if the code were broken). I also checked that a deliberately broken delete makes the test fail.
