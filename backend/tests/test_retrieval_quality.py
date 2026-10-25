@@ -116,3 +116,38 @@ def test_nonexistent_citation_is_rejected(monkeypatch):
                 "filename": "handbook.txt",
             }],
         )
+        
+def test_grouped_citations_are_normalized_and_listed(monkeypatch):
+    fake_gemini(monkeypatch, "Borrow four books for fourteen days [S1, S2].")
+
+    reply = gemini_service.get_chat_reply(
+        "What are the borrowing rules?",
+        context_chunks=[
+            {
+                "text": "Students may borrow four books.",
+                "filename": "borrowing.txt",
+            },
+            {
+                "text": "The loan period is fourteen days.",
+                "filename": "loan-period.txt",
+            },
+        ],
+    )
+
+    assert "fourteen days [S1] [S2]." in reply
+    assert "[S1] borrowing.txt" in reply
+    assert "[S2] loan-period.txt" in reply
+    assert "[S1, S2]" not in reply
+
+
+def test_grouped_citation_with_unknown_source_is_rejected(monkeypatch):
+    fake_gemini(monkeypatch, "Borrow four books [S1, S2].")
+
+    with pytest.raises(gemini_service.GeminiServiceError):
+        gemini_service.get_chat_reply(
+            "How many books?",
+            context_chunks=[{
+                "text": "Students may borrow four books.",
+                "filename": "borrowing.txt",
+            }],
+        )
