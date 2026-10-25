@@ -5,7 +5,7 @@ from sentence_transformers import SentenceTransformer
 
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 CHROMA_PERSIST_DIR = "chroma_data"
-COLLECTION_NAME = "documents"
+COLLECTION_NAME = "documents_cosine_v1"
 
 _model = None
 _client = None
@@ -21,9 +21,24 @@ def get_model() -> SentenceTransformer:
 
 def get_collection():
     global _client, _collection
+
     if _collection is None:
         _client = chromadb.PersistentClient(path=CHROMA_PERSIST_DIR)
-        _collection = _client.get_or_create_collection(COLLECTION_NAME)
+        collection = _client.get_or_create_collection(
+            name=COLLECTION_NAME,
+            configuration={"hnsw": {"space": "cosine"}},
+        )
+
+        # Creation settings do not change an existing collection.
+        space = collection.configuration["hnsw"]["space"]
+        if space != "cosine":
+            raise RuntimeError(
+                f"Collection '{COLLECTION_NAME}' uses {space}, "
+                "but retrieval requires cosine. Migrate the index first."
+            )
+
+        _collection = collection
+
     return _collection
 
 
@@ -60,43 +75,60 @@ def store_document_chunks(filename: str, chunks: list[str]) -> str:
 
 
 def query_chunks(question: str, top_k: int = 3):
-    """Return the top_k most relevant chunks for a question, with distances."""
-    model = get_model()
+    """Return nearest chunks and cosine distances; lower is closer."""
+    if top_k < 1:
+        raise ValueError("top_k must be at least 1.")
+
     collection = get_collection()
+    count = collection.count()
 
-    question_embedding = model.encode([question]).tolist()
-    results = collection.query(
+    if count == 0:
+        return {
+            "ids": [[]],
+            "documents": [[]],
+            "metadatas": [[]],
+            "distances": [[]],
+        }
+
+    question_embedding = get_model().encode([question]).tolist()
+
+    return collection.query(
         query_embeddings=question_embedding,
-        n_results=top_k,
+        n_results=min(top_k, count),
+        include=["documents", "metadatas", "distances"],
     )
-    return results
 
-DISTANCE_THRESHOLD = 0.8  # cosine distance cutoff; chunks farther than this
-                           # are treated as irrelevant to the question.
-                           # Tuned by eye — revisit with real usage data.
+# Cosine distance: lower is closer; include distances <= this cutoff.
+# Provisional value to assess with the evaluation set; not a confidence score.
+DISTANCE_THRESHOLD = 0.8 
 
 
 def get_relevant_chunks(question: str, top_k: int = 3) -> list[dict]:
-    """
-    Returns a list of relevant chunks for the question, each as
-    {"text": ..., "filename": ..., "distance": ...}, filtered to only
-    chunks under DISTANCE_THRESHOLD. Returns [] if nothing is relevant
-    (including when the collection is empty).
-    """
+    """Return chunks with cosine distance <= the cutoff, including source IDs."""
     results = query_chunks(question, top_k=top_k)
 
-    documents = results.get("documents", [[]])[0]
-    metadatas = results.get("metadatas", [[]])[0]
-    distances = results.get("distances", [[]])[0]
+    ids = results["ids"][0]
+    documents = results["documents"][0]
+    metadatas = results["metadatas"][0]
+    distances = results["distances"][0]
 
     relevant = []
-    for text, meta, distance in zip(documents, metadatas, distances):
-        if distance <= DISTANCE_THRESHOLD:
-            relevant.append({
-                "text": text,
-                "filename": meta.get("filename", "unknown"),
-                "distance": distance,
-            })
+    for chunk_id, text, meta, distance in zip(
+        ids, documents, metadatas, distances
+    ):
+        if distance is None or distance > DISTANCE_THRESHOLD:
+            continue
+
+        meta = meta or {}
+        relevant.append({
+            "text": text,
+            "filename": meta.get("filename", "unknown"),
+            "document_id": meta.get("document_id"),
+            "chunk_id": chunk_id,
+            "chunk_index": meta.get("chunk_index"),
+            "distance": distance,
+        })
+
     return relevant
 
 def list_documents() -> list[dict]:
