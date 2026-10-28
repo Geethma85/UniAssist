@@ -103,7 +103,7 @@ class ApiService {
             if (conversationId != null) 'conversation_id': conversationId,
           }),
         )
-        .timeout(_timeout);
+        .timeout(const Duration(seconds: 90));
     final data = _decode(response);
     return ChatReply(
       reply: data['reply'] as String,
@@ -130,7 +130,7 @@ class ApiService {
           ),
           headers: await _headers(),
         )
-        .timeout(const Duration(seconds: 90));
+        .timeout(_timeout);
 
     // Successful deletion returns 204 with no JSON body.
     if (response.statusCode == 204) return;
