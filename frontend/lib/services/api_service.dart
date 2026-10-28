@@ -130,7 +130,7 @@ class ApiService {
           ),
           headers: await _headers(),
         )
-        .timeout(_timeout);
+        .timeout(const Duration(seconds: 90));
 
     // Successful deletion returns 204 with no JSON body.
     if (response.statusCode == 204) return;
