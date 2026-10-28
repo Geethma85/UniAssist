@@ -87,3 +87,88 @@ def test_chat_returns_reply_and_saves_messages(
     # Both sides of the exchange saved, under the token's uid
     mock_save.assert_any_call("test-user-123", "convo-1", "user", "What time does the library close?")
     mock_save.assert_any_call("test-user-123", "convo-1", "assistant", "The library closes at 10pm on weekdays.")
+    
+@pytest.mark.parametrize("payload", [[], "hello", 123, True])
+@patch("app.middleware.auth.db")
+@patch("app.middleware.auth.firebase_auth.verify_id_token")
+@patch("app.routes.chat.get_chat_reply")
+@patch("app.routes.chat.get_relevant_chunks")
+def test_chat_rejects_non_object_json(
+    mock_chunks, mock_reply, mock_verify, mock_db, client, payload
+):
+    _mock_successful_auth(mock_verify, mock_db)
+
+    response = client.post(
+        "/chat", json=payload, headers=auth_headers()
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["error"] == (
+        "Request body must be a JSON object."
+    )
+    mock_chunks.assert_not_called()
+    mock_reply.assert_not_called()
+
+
+@patch("app.routes.chat.save_message")
+@patch("app.routes.chat.create_conversation")
+@patch("app.middleware.auth.db")
+@patch("app.middleware.auth.firebase_auth.verify_id_token")
+@patch("app.routes.chat.get_chat_reply")
+@patch(
+    "app.routes.chat.get_relevant_chunks",
+    side_effect=RuntimeError("private database details"),
+)
+def test_chat_handles_retrieval_failure(
+    mock_chunks, mock_reply, mock_verify, mock_db,
+    mock_create, mock_save, client
+):
+    _mock_successful_auth(mock_verify, mock_db)
+
+    response = client.post(
+        "/chat",
+        json={"message": "When does the library open?"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 503
+    assert response.get_json()["error"] == (
+        "Document search is temporarily unavailable. Please try again."
+    )
+    mock_reply.assert_not_called()
+    mock_create.assert_not_called()
+    mock_save.assert_not_called()
+    
+@patch("app.routes.chat.save_message")
+@patch("app.routes.chat.create_conversation")
+@patch("app.routes.chat.get_relevant_chunks")
+@patch("app.routes.chat.get_chat_reply")
+@patch(
+    "app.routes.chat.get_recent_messages",
+    side_effect=RuntimeError("private Firestore details"),
+)
+@patch("app.middleware.auth.db")
+@patch("app.middleware.auth.firebase_auth.verify_id_token")
+def test_chat_handles_history_failure(
+    mock_verify, mock_db, mock_history, mock_reply,
+    mock_chunks, mock_create, mock_save, client
+):
+    _mock_successful_auth(mock_verify, mock_db)
+
+    response = client.post(
+        "/chat",
+        json={
+            "message": "Continue our conversation",
+            "conversation_id": "convo-1",
+        },
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 503
+    assert response.get_json()["error"] == (
+        "Conversation history is temporarily unavailable. Please try again."
+    )
+    mock_chunks.assert_not_called()
+    mock_reply.assert_not_called()
+    mock_create.assert_not_called()
+    mock_save.assert_not_called()
