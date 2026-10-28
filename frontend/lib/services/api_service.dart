@@ -122,6 +122,24 @@ class ApiService {
         .toList();
   }
 
+    static Future<void> deleteConversation(String conversationId) async {
+    final response = await http
+        .delete(
+          Uri.parse(
+            '$baseUrl/conversations/${Uri.encodeComponent(conversationId)}',
+          ),
+          headers: await _headers(),
+        )
+        .timeout(_timeout);
+
+    // Successful deletion returns 204 with no JSON body.
+    if (response.statusCode == 204) return;
+
+    _decode(response);
+  }
+
+  
+
   static Future<List<ChatMessage>> getMessages(String conversationId) async {
     final response = await http
         .get(Uri.parse('$baseUrl/conversations/$conversationId'),
