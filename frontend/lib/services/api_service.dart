@@ -103,7 +103,7 @@ class ApiService {
             if (conversationId != null) 'conversation_id': conversationId,
           }),
         )
-        .timeout(_timeout);
+        .timeout(const Duration(seconds: 90));
     final data = _decode(response);
     return ChatReply(
       reply: data['reply'] as String,
@@ -121,6 +121,24 @@ class ApiService {
         .map((c) => ConversationSummary.fromJson(c as Map<String, dynamic>))
         .toList();
   }
+
+    static Future<void> deleteConversation(String conversationId) async {
+    final response = await http
+        .delete(
+          Uri.parse(
+            '$baseUrl/conversations/${Uri.encodeComponent(conversationId)}',
+          ),
+          headers: await _headers(),
+        )
+        .timeout(_timeout);
+
+    // Successful deletion returns 204 with no JSON body.
+    if (response.statusCode == 204) return;
+
+    _decode(response);
+  }
+
+  
 
   static Future<List<ChatMessage>> getMessages(String conversationId) async {
     final response = await http

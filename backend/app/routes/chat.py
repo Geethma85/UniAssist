@@ -33,9 +33,8 @@ MAX_HISTORY_TURNS = 20  # how many prior turns we forward to Gemini per request
 @require_auth
 def chat():
     data = request.get_json(silent=True)
-    if data is None:
-        return jsonify({"error": "Request body must be valid JSON."}), 400
-
+    if not isinstance(data, dict):
+        return jsonify({"error": "Request body must be a JSON object."}), 400
     message = data.get("message")
     conversation_id = data.get("conversation_id")
 
@@ -52,13 +51,30 @@ def chat():
 
     # History comes from Firestore under the verified uid, never from the client.
     if conversation_id:
-        history = get_recent_messages(g.uid, conversation_id, MAX_HISTORY_TURNS)
+        try:
+            history = get_recent_messages(
+                g.uid, conversation_id, MAX_HISTORY_TURNS
+            )
+        except Exception:
+            logger.exception("Conversation history loading failed")
+            return jsonify({
+                "error": "Conversation history is temporarily unavailable. "
+                         "Please try again."
+            }), 503
+
         if history is None:
             return jsonify({"error": "Conversation not found."}), 404
     else:
         history = []
 
-    relevant_chunks = get_relevant_chunks(message)
+    try:
+        relevant_chunks = get_relevant_chunks(message)
+    except Exception:
+        logger.exception("Document retrieval failed")
+        return jsonify({
+            "error": "Document search is temporarily unavailable. Please try again."
+        }), 503
+    
     try:
         reply = get_chat_reply(message, history, context_chunks=relevant_chunks)
     except GeminiServiceError as e:

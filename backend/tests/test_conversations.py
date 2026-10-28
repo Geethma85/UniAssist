@@ -95,3 +95,108 @@ def test_save_message_writes_message_and_updates_preview(mock_ref, mock_firestor
     assert mock_batch.update.call_args[0][1]["lastMessagePreview"] == "hello there"
 
     mock_batch.commit.assert_called_once()
+
+def test_delete_conversation_requires_auth(client):
+    assert client.delete("/conversations/abc").status_code == 401
+
+
+@patch("app.services.conversation_service._conversations_ref")
+@patch("app.middleware.auth.db")
+@patch("app.middleware.auth.firebase_auth.verify_id_token")
+def test_delete_uses_authenticated_users_path(
+    mock_verify, mock_db, mock_ref, client
+):
+    _mock_successful_auth(mock_verify, mock_db)
+    convo = mock_ref.return_value.document.return_value
+    convo.get.return_value.exists = False
+
+    response = client.delete(
+        "/conversations/another-users-convo",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 404
+    mock_ref.assert_called_once_with("test-user-123")
+    convo.collection.assert_not_called()
+    convo.delete.assert_not_called()
+
+
+@patch("app.services.conversation_service.firestore")
+@patch("app.services.conversation_service._conversations_ref")
+@patch("app.middleware.auth.db")
+@patch("app.middleware.auth.firebase_auth.verify_id_token")
+def test_delete_removes_messages_before_parent(
+    mock_verify, mock_db, mock_ref, mock_firestore, client
+):
+    _mock_successful_auth(mock_verify, mock_db)
+    convo = mock_ref.return_value.document.return_value
+    convo.get.return_value.exists = True
+
+    message = MagicMock()
+    query = convo.collection.return_value.limit.return_value
+    query.stream.side_effect = [[message], []]
+
+    batch = mock_firestore.client.return_value.batch.return_value
+    order = MagicMock()
+    order.attach_mock(batch.commit, "commit")
+    order.attach_mock(convo.delete, "delete_parent")
+
+    response = client.delete(
+        "/conversations/convo-1", headers=auth_headers()
+    )
+
+    assert response.status_code == 204
+    assert response.data == b""
+    mock_ref.assert_called_once_with("test-user-123")
+    convo.collection.assert_called_once_with("messages")
+    batch.delete.assert_called_once_with(message.reference)
+    assert [call[0] for call in order.mock_calls] == [
+        "commit", "delete_parent"
+    ]
+
+
+@patch("app.services.conversation_service.firestore")
+@patch("app.services.conversation_service._conversations_ref")
+@patch("app.middleware.auth.db")
+@patch("app.middleware.auth.firebase_auth.verify_id_token")
+def test_delete_failure_preserves_parent_for_retry(
+    mock_verify, mock_db, mock_ref, mock_firestore, client
+):
+    _mock_successful_auth(mock_verify, mock_db)
+    convo = mock_ref.return_value.document.return_value
+    convo.get.return_value.exists = True
+    convo.collection.return_value.limit.return_value.stream.return_value = [
+        MagicMock()
+    ]
+    batch = mock_firestore.client.return_value.batch.return_value
+    batch.commit.side_effect = RuntimeError("private database details")
+
+    response = client.delete(
+        "/conversations/convo-1", headers=auth_headers()
+    )
+
+    assert response.status_code == 503
+    assert response.get_json()["error"] == (
+        "Could not delete conversation. Please try again."
+    )
+    convo.delete.assert_not_called()
+
+
+@patch("app.services.conversation_service._conversations_ref")
+@patch("app.middleware.auth.db")
+@patch("app.middleware.auth.firebase_auth.verify_id_token")
+
+def test_delete_empty_conversation(
+    mock_verify, mock_db, mock_ref, client
+):
+    _mock_successful_auth(mock_verify, mock_db)
+    convo = mock_ref.return_value.document.return_value
+    convo.get.return_value.exists = True
+    convo.collection.return_value.limit.return_value.stream.return_value = []
+
+    response = client.delete(
+        "/conversations/convo-1", headers=auth_headers()
+    )
+
+    assert response.status_code == 204
+    convo.delete.assert_called_once()

@@ -104,3 +104,28 @@ def get_conversation(uid, conversation_id):
             "createdAt": _iso(data.get("createdAt")),
         })
     return {"id": snap.id, "title": snap.to_dict().get("title", ""), "messages": messages}
+
+def delete_conversation(uid, conversation_id):
+    """Delete this user's conversation and messages; False if not found."""
+    convo_ref = _conversations_ref(uid).document(conversation_id)
+
+    if not convo_ref.get().exists:
+        return False
+
+    db = firestore.client()
+    messages_ref = convo_ref.collection("messages")
+
+    # Delete messages in bounded batches, then delete the parent.
+    # If a batch fails, the parent remains so deletion can be retried.
+    while True:
+        messages = list(messages_ref.limit(400).stream())
+        if not messages:
+            break
+
+        batch = db.batch()
+        for message in messages:
+            batch.delete(message.reference)
+        batch.commit()
+
+    convo_ref.delete()
+    return True
