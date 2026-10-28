@@ -151,3 +151,17 @@ def test_grouped_citation_with_unknown_source_is_rejected(monkeypatch):
                 "filename": "borrowing.txt",
             }],
         )
+
+def test_truncated_response_is_rejected(monkeypatch):
+    client = fake_gemini(monkeypatch, "This answer was cut off")
+    client.models.generate_content.return_value.candidates = [
+        SimpleNamespace(
+            finish_reason=gemini_service.types.FinishReason.MAX_TOKENS
+        )
+    ]
+
+    with pytest.raises(
+        gemini_service.GeminiServiceError,
+        match="exceeded the response limit",
+    ):
+        gemini_service.get_chat_reply("Suggest a study routine")

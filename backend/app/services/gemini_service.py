@@ -146,7 +146,7 @@ def get_chat_reply(message: str, history: list | None = None, context_chunks: li
             contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
-                max_output_tokens=1024,
+                max_output_tokens=4096,
                 temperature=0.7,
             ),
         )
@@ -165,6 +165,20 @@ def get_chat_reply(message: str, history: list | None = None, context_chunks: li
     if not response or not getattr(response, "text", None):
         raise GeminiServiceError("AI service returned an empty response.", 502)
 
+    candidates = getattr(response, "candidates", None) or []
+    finish_reason = (
+        getattr(candidates[0], "finish_reason", None)
+        if candidates else None
+    )
+    print(f"Gemini finish reason: {finish_reason}", flush=True)
+    
+    if finish_reason == types.FinishReason.MAX_TOKENS:
+        raise GeminiServiceError(
+            "The answer exceeded the response limit. "
+            "Please ask a narrower question or request a shorter answer.",
+            502,
+        )
+        
     reply = response.text.strip()
     # Normalize grouped citations: [S1, S2] -> [S1] [S2].
     reply = re.sub(
