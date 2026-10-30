@@ -1,4 +1,5 @@
 import os
+import json
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -19,7 +20,15 @@ def firebase_credential_path():
 
 # Initialize once, including when tests create multiple app instances.
 if not firebase_admin._apps:
-    cred = credentials.Certificate(str(firebase_credential_path()))
+    service_account_json = os.getenv(
+        "FIREBASE_SERVICE_ACCOUNT_JSON", ""
+    ).strip()
+
+    if service_account_json:
+        cred = credentials.Certificate(json.loads(service_account_json))
+    else:
+        cred = credentials.Certificate(str(firebase_credential_path()))
+
     firebase_admin.initialize_app(cred)
 def create_app():
     """Application factory. Keeps app creation testable (pytest can spin up
