@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime, timezone
 import chromadb
 from sentence_transformers import SentenceTransformer
+import os
 
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 CHROMA_PERSIST_DIR = "chroma_data"
@@ -176,3 +177,15 @@ def delete_document(document_id: str) -> int:
         return 0
     collection.delete(ids=ids)
     return len(ids)
+
+_backend = os.getenv("VECTOR_STORE_BACKEND", "chroma").strip().lower()
+
+if _backend == "azure":
+    from app.services.azure_vector_store import (
+        store_document_chunks,
+        query_chunks,
+        list_documents,
+        delete_document,
+    )
+elif _backend != "chroma":
+    raise RuntimeError("VECTOR_STORE_BACKEND must be 'chroma' or 'azure'.")

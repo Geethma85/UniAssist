@@ -120,7 +120,22 @@ class _AdminDocumentsScreenState extends State<AdminDocumentsScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Manage documents'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            tooltip: 'Back',
+            onPressed: () {
+              final navigator = Navigator.of(context);
+              if (navigator.canPop()) {
+                navigator.pop();
+              } else {
+                navigator.pushNamedAndRemoveUntil(
+                  '/home',
+                  (route) => false,
+                );
+              }
+            },
+          ),
+          title: const Text('Manage documents'),
         backgroundColor: AppColors.background,
         elevation: 0,
       ),
