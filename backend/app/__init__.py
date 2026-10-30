@@ -25,7 +25,20 @@ def create_app():
     """Application factory. Keeps app creation testable (pytest can spin up
     fresh instances) instead of using a single global Flask object."""
     app = Flask(__name__)
-    CORS(app)
+    allowed_origins = [
+        origin.strip()
+        for origin in os.getenv(
+            "CORS_ALLOWED_ORIGINS",
+            "http://localhost:3000",
+        ).split(",")
+        if origin.strip()
+    ]
+    CORS(
+        app,
+        origins=allowed_origins,
+        allow_headers=["Authorization", "Content-Type"],
+        methods=["GET", "POST", "DELETE", "OPTIONS"],
+    )
     
     app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10 MB, matches our file validation
 
