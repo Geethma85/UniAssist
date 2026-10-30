@@ -2,9 +2,6 @@ name: Build backend image
 
 on:
   push:
-    branches:
-      - container-deployment
-      - main
     paths:
       - "backend/**"
       - ".github/workflows/backend-image.yml"
