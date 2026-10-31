@@ -49,7 +49,7 @@ Flask REST API (Azure Container Apps)
         +--->  Gemini API (answer generation)
 ```
 
-1. An admin uploads a document. The backend extracts the text, splits it into 500-character chunks with 80 characters of overlap, embeds each chunk with `all-MiniLM-L6-v2`, and stores them in ChromaDB. Every upload gets its own `document_id` stored in each chunk's metadata, so two uploads with the same filename stay separate.
+1. An admin uploads a document. The backend extracts the text, splits it into 500-character chunks with 80 characters of overlap, embeds each chunk with `all-MiniLM-L6-v2`, and stores them in the configured vector store. Every upload gets its own `document_id` stored in each chunk's metadata, so two uploads with the same filename stay separate.
 2. A student asks a question. The backend embeds it, retrieves the closest chunks (filtered by a distance threshold), and sends them to Gemini with a prompt that tells the model to say it doesn't know when the context doesn't cover the question.
 3. The conversation is saved in Firestore, written by the backend only.
 
@@ -132,7 +132,7 @@ In a separate terminal, from the repository root:
 ```bash
 cd frontend
 flutter pub get
-flutter run -d chrome
+flutter run -d web-server --web-port=3000 --dart-define=API_BASE_URL=https://uniassist-backend-kr.salmonbay-88d80279.koreacentral.azurecontainerapps.io
 ```
 This connects the local frontend to the deployed backend; local Flask is not required. For local backend development, use `--dart-define=API_BASE_URL=http://127.0.0.1:5000` instead.
 
@@ -146,19 +146,9 @@ Enable Developer options and USB debugging, connect the phone, then run from `fr
 flutter run --dart-define=API_BASE_URL=https://uniassist-backend-kr.salmonbay-88d80279.koreacentral.azurecontainerapps.io
 ```
 
-If prompted, select the Android device. Once installed, the app connects to Azure over the internet and can be opened without the USB cable.
+If prompted, select the Android device. Once installed, the app connects to Azure over the internet and can be opened without the USB cable. Local Flask is not required.
 
-Google sign-in requires the Android package name and the signing certificate's SHA fingerprint to be registered in Firebase. The current Android setup was tested with a debug build.
-
-- **USB (no shared Wi-Fi needed):** plug the phone in with USB debugging on, then
-  ```bash
-  adb reverse tcp:5000 tcp:5000
-  flutter run -d <device-id>
-  ```
-- **Same Wi-Fi or hotspot:** start Flask with `flask run --host=0.0.0.0`, then
-  ```bash
-  flutter run -d <device-id> --dart-define=API_BASE_URL=http://<your-computer-ip>:5000
-  ```
+Google sign-in requires the Android package name and signing certificate's SHA fingerprint to be registered in Firebase. The current Android setup was tested with a debug build.
 
 ### Making an account an admin
 Admin accounts are set manually: in Firestore, open `users/<uid>` and set the string field `role` to `admin`. New sign-ups default to `student`.
