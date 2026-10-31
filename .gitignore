@@ -18,3 +18,5 @@ backend/chroma_db/
 .DS_Store
 
 chroma_data/
+
+/.firebase/
