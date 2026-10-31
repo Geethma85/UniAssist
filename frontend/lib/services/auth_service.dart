@@ -1,10 +1,12 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 /// Handles all Firebase Authentication + user profile logic.
 /// UI screens should never call FirebaseAuth or Firestore directly —
 /// they call methods on this class instead.
 class AuthService {
+  static Future<void>? _googleInitialization;
   FirebaseAuth get _auth => FirebaseAuth.instance;
   FirebaseFirestore get _firestore => FirebaseFirestore.instance;
 
@@ -112,44 +114,78 @@ class AuthService {
   }
 
     Future<void> signInWithGoogle() async {
-    if (!kIsWeb) {
-      throw FirebaseAuthException(
-        code: 'unsupported-platform',
-        message: 'Google sign-in is currently available on the website.',
-      );
-    }
+      late final UserCredential credential;
 
-    final provider = GoogleAuthProvider()
-      ..setCustomParameters({'prompt': 'select_account'});
+      if (kIsWeb) {
+        final provider = GoogleAuthProvider()
+          ..setCustomParameters({'prompt': 'select_account'});
 
-    final credential = await _auth.signInWithPopup(provider);
-    final user = credential.user;
+        credential = await _auth.signInWithPopup(provider);
+      } else if (defaultTargetPlatform == TargetPlatform.android) {
+        try {
+          final googleSignIn = GoogleSignIn.instance;
+          await (_googleInitialization ??= googleSignIn.initialize());
 
-    if (user == null) {
-      throw FirebaseAuthException(
-        code: 'login-failed',
-        message: 'Google sign-in did not return a user.',
-      );
-    }
+          final googleUser = await googleSignIn.authenticate();
+          final idToken = googleUser.authentication.idToken;
 
-    final profile = _firestore.collection('users').doc(user.uid);
+          if (idToken == null) {
+            throw FirebaseAuthException(
+              code: 'google-token-missing',
+              message: 'Google did not return an authentication token.',
+            );
+          }
 
-    await _firestore.runTransaction((transaction) async {
-      final snapshot = await transaction.get(profile);
+          credential = await _auth.signInWithCredential(
+            GoogleAuthProvider.credential(idToken: idToken),
+          );
+        } on GoogleSignInException catch (e) {
+          debugPrint('Google sign-in error: ${e.code.name}: ${e.description}');
 
-      // Existing profiles and admin roles remain unchanged.
-      if (!snapshot.exists) {
-        transaction.set(profile, {
-          'uid': user.uid,
-          'name': user.displayName ?? '',
-          'email': user.email ?? '',
-          'role': 'student',
-          'createdAt': FieldValue.serverTimestamp(),
-        });
+          if (e.code == GoogleSignInExceptionCode.canceled) {
+            throw FirebaseAuthException(
+              code: 'popup-closed-by-user',
+              message: 'Google sign-in was cancelled.',
+            );
+          }
+
+          throw FirebaseAuthException(
+            code: 'google-sign-in-failed',
+            message: 'Google sign-in could not be completed.',
+          );
+        }
+      } else {
+        throw FirebaseAuthException(
+          code: 'unsupported-platform',
+          message: 'Google sign-in supports web and Android in UniAssist.',
+        );
       }
-    });
-  }
-  
+
+      final user = credential.user;
+      if (user == null) {
+        throw FirebaseAuthException(
+          code: 'login-failed',
+          message: 'Google sign-in did not return a user.',
+        );
+      }
+
+      final profile = _firestore.collection('users').doc(user.uid);
+
+      await _firestore.runTransaction((transaction) async {
+        final snapshot = await transaction.get(profile);
+
+        if (!snapshot.exists) {
+          transaction.set(profile, {
+            'uid': user.uid,
+            'name': user.displayName ?? '',
+            'email': user.email ?? '',
+            'role': 'student',
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        }
+      });
+    }
+
   /// Signs the current user out.
   Future<void> logout() async {
     await _auth.signOut();
