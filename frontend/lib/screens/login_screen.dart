@@ -76,7 +76,54 @@ class _LoginScreenState extends State<LoginScreen> {
   // NOTE: requires google_sign_in package + Firebase OAuth client setup.
   // Wiring this is a separate step from email/password auth.
   Future<void> _handleGoogleSignIn() async {
-    // TODO: implement Google Sign-In
+    if (_isLoading) return;
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      await _authService.signInWithGoogle();
+
+      if (!mounted) return;
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        '/home',
+        (route) => false,
+      );
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+
+      if (e.code == 'popup-closed-by-user' ||
+          e.code == 'cancelled-popup-request') {
+        return;
+      }
+
+      final message = switch (e.code) {
+        'popup-blocked' =>
+          'Allow popups for UniAssist and try again.',
+        'unauthorized-domain' =>
+          'This website is not authorized for Google sign-in.',
+        'operation-not-allowed' =>
+          'Google sign-in is not enabled yet.',
+        'account-exists-with-different-credential' =>
+          'Use your existing sign-in method for this account.',
+        'network-request-failed' =>
+          'Check your internet connection and try again.',
+        _ => 'Google sign-in failed. Please try again.',
+      };
+
+      setState(() => _errorMessage = message);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _errorMessage =
+              'Could not finish Google sign-in. Please try again.';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
   
   /// Maps Firebase Auth error codes to user-friendly messages.

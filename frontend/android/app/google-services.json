@@ -12,7 +12,20 @@
           "package_name": "com.example.uniassist"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "117413510454-5r58v1n2vtch8sfus2d9d94rphgdrvf8.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.uniassist",
+            "certificate_hash": "2199da45a93ea34e03bd4002c9e84b467906a5ea"
+          }
+        },
+        {
+          "client_id": "117413510454-6m7p8t4mp40dt2gcnbvgv7h6k6qana0t.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyCZHTp3RnsBbX16WpXqQDPMlsp9skSJ5Gg"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "117413510454-6m7p8t4mp40dt2gcnbvgv7h6k6qana0t.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "117413510454-f3sgsba1p2v301j6kr4jouvf5le9f5j3.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.uniassist"
+              }
+            }
+          ]
         }
       }
     }
