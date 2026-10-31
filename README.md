@@ -8,12 +8,20 @@ An AI assistant for university students. Students chat with UniAssist about cour
 |---|---|---|
 | ![Home](docs/screenshots/home.png) | ![Chat](docs/screenshots/chat.png) | ![Admin](docs/screenshots/admin-documents.png) |
 
+## Live demo
 
+[Open UniAssist](https://uniassist-5a787.web.app)
+
+The web app works on desktop and mobile browsers. Sign up with email/password or continue with Google.
+
+The demo uses eight fictional university PDFs. Their policies and dates are sample content, not official university information.
+
+The backend scales to zero when idle, so the first request may take longer.
 
 ## Features
 
 **Students**
-- Email/password sign-up and login (Firebase Authentication)
+- Email/password registration and login, plus Google sign-in on web and Android
 - Chat with an assistant that answers from uploaded documents and admits uncertainty when it has no source
 - Conversation history saved per user, with a full history screen and a recent-conversations list on Home
 
@@ -26,14 +34,19 @@ An AI assistant for university students. Students chat with UniAssist about cour
 ## How it works
 
 ```
-Flutter app (Chrome / Android)
+Flutter app (Web / Android)
         |  HTTPS + Firebase ID token (Authorization: Bearer ...)
         v
-Flask REST API  --->  Firebase Auth (verify token)  --->  Firestore (users, roles, chat history)
+Flask REST API (Azure Container Apps)
         |
-        +--->  ChromaDB (document chunks + embeddings, all-MiniLM-L6-v2)
+        +--->  Firebase Auth (verify token)
         |
-        +--->  Gemini API (answer generation, google-genai SDK)
+        +--->  Firestore (users, roles, chat history)
+        |
+        +--->  Azure AI Search (deployed) / ChromaDB (local)
+        |      Document chunks + all-MiniLM-L6-v2 embeddings
+        |
+        +--->  Gemini API (answer generation)
 ```
 
 1. An admin uploads a document. The backend extracts the text, splits it into 500-character chunks with 80 characters of overlap, embeds each chunk with `all-MiniLM-L6-v2`, and stores them in ChromaDB. Every upload gets its own `document_id` stored in each chunk's metadata, so two uploads with the same filename stay separate.
@@ -44,12 +57,14 @@ Flask REST API  --->  Firebase Auth (verify token)  --->  Firestore (users, role
 
 | Layer | Tools |
 |---|---|
-| Frontend | Flutter (Dart), `http`, `file_picker` |
-| Backend | Python, Flask REST API |
-| Auth and data | Firebase Authentication, Cloud Firestore |
+| Frontend | Flutter (Dart), `http`, `file_picker`, `google_sign_in` |
+| Backend | Python, Flask REST API, Gunicorn |
+| Auth and data | Firebase Authentication (email/password and Google), Cloud Firestore |
 | AI | Gemini API (`google-genai` SDK), RAG |
-| Retrieval | `sentence-transformers` (`all-MiniLM-L6-v2`), ChromaDB |
-| Testing | pytest (33 tests) |
+| Retrieval | `sentence-transformers` (`all-MiniLM-L6-v2`), Azure AI Search (deployed), ChromaDB (local) |
+| Hosting | Firebase Hosting (web), Azure Container Apps (backend) |
+| Container builds | Docker, GitHub Actions, GitHub Container Registry (GHCR) |
+| Testing | pytest (54 tests passed with ChromaDB), Flutter tests, manual web and Android checks |
 
 ## API overview
 
@@ -119,11 +134,21 @@ cd frontend
 flutter pub get
 flutter run -d chrome
 ```
+This connects the local frontend to the deployed backend; local Flask is not required. For local backend development, use `--dart-define=API_BASE_URL=http://127.0.0.1:5000` instead.
 
 The Firebase client config (`firebase_options.dart`) is generated with FlutterFire for your own Firebase project.
 
 ### Running on an Android phone
-`localhost` on a phone means the phone itself, so the app needs a route to your computer.
+
+Enable Developer options and USB debugging, connect the phone, then run from `frontend/`:
+
+```bash
+flutter run --dart-define=API_BASE_URL=https://uniassist-backend-kr.salmonbay-88d80279.koreacentral.azurecontainerapps.io
+```
+
+If prompted, select the Android device. Once installed, the app connects to Azure over the internet and can be opened without the USB cable.
+
+Google sign-in requires the Android package name and the signing certificate's SHA fingerprint to be registered in Firebase. The current Android setup was tested with a debug build.
 
 - **USB (no shared Wi-Fi needed):** plug the phone in with USB debugging on, then
   ```bash
@@ -144,8 +169,9 @@ Admin accounts are set manually: in Firestore, open `users/<uid>` and set the st
 cd backend
 ./venv/Scripts/python.exe -m pytest -v
 ```
+The latest recorded backend run passed 54 tests using ChromaDB, covering authentication, chat, conversations, text extraction, chunking, retrieval and document management. Delete tests use a real in-memory ChromaDB.
 
-33 tests cover auth middleware, chat, conversations, text extraction, chunking, the vector store, and document management. The delete tests run against a real in-memory ChromaDB, so the real delete code executes (a mocked delete would pass even if the code were broken). I also checked that a deliberately broken delete makes the test fail.
+Azure AI Search was checked manually through document upload, retrieval and deletion. Google sign-in and chat were also checked on web and Android.
 
 ## Design decisions
 
@@ -162,10 +188,8 @@ cd backend
 - No conversation deletion
 - No email verification at sign-up
 - The Gemini free tier can rate-limit; the app then shows a generic error
-- Backend runs locally; no deployment yet
 
 ## Roadmap
-- Deploy the backend and point `API_BASE_URL` at it
 - Conversation deletion and rename
 - Email verification and password reset
 - Retrieval evaluation set to tune the threshold properly
