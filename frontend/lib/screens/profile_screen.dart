@@ -46,9 +46,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           .doc(user.uid)
           .get();
 
+      if (!mounted) return;
+
       final data = doc.data() ?? {};
 
       setState(() {
+        _error = null;
         _name = data['name'] as String? ?? 'Unknown';
         _email = data['email'] as String? ?? user.email ?? '—';
         _accountRole = _formatRole(data['role'] as String? ?? 'student');
@@ -56,6 +59,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _loading = false;
       });
     } catch (e) {
+      if (!mounted) return;
+
       setState(() {
         _error = 'Could not load profile. Please try again.';
         _loading = false;
@@ -72,8 +77,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (createdAt is Timestamp) {
       final date = createdAt.toDate();
       const months = [
-        'January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December',
+        'January',
+        'February',
+        'March',
+        'April',
+        'May',
+        'June',
+        'July',
+        'August',
+        'September',
+        'October',
+        'November',
+        'December',
       ];
       return '${months[date.month - 1]} ${date.year}';
     }
@@ -98,38 +113,41 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
                   : _error != null
-                      ? Center(child: Text(_error!))
-                      : SingleChildScrollView(
-                          padding: const EdgeInsets.all(20),
-                          child: Column(
-                            children: [
-                              const SizedBox(height: 12),
-                              _buildAvatar(),
-                              const SizedBox(height: 16),
-                              Text(
-                                _name,
-                                style: TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.onSurface,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                _email,
-                                style: TextStyle(fontSize: 15, color: AppColors.onSurfaceVariant),
-                              ),
-                              const SizedBox(height: 12),
-                              _buildVerifiedBadge(),
-                              const SizedBox(height: 28),
-                              _buildSectionLabel('ACCOUNT DETAILS'),
-                              const SizedBox(height: 12),
-                              _buildAccountDetailsCard(context),
-                              const SizedBox(height: 24),
-                              _buildLogoutButton(context),
-                            ],
+                  ? Center(child: Text(_error!))
+                  : SingleChildScrollView(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        children: [
+                          const SizedBox(height: 12),
+                          _buildAvatar(),
+                          const SizedBox(height: 16),
+                          Text(
+                            _name,
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.onSurface,
+                            ),
                           ),
-                        ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _email,
+                            style: TextStyle(
+                              fontSize: 15,
+                              color: AppColors.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          _buildVerifiedBadge(),
+                          const SizedBox(height: 28),
+                          _buildSectionLabel('ACCOUNT DETAILS'),
+                          const SizedBox(height: 12),
+                          _buildAccountDetailsCard(context),
+                          const SizedBox(height: 24),
+                          _buildLogoutButton(context),
+                        ],
+                      ),
+                    ),
             ),
             const AppBottomNav(currentTab: AppTab.profile),
           ],
@@ -144,7 +162,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       height: 112,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(color: AppColors.outlineVariant.withOpacity(0.4), width: 2),
+        border: Border.all(
+          color: AppColors.outlineVariant.withOpacity(0.4),
+          width: 2,
+        ),
       ),
       clipBehavior: Clip.antiAlias,
       child: Image.asset(
@@ -152,7 +173,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         fit: BoxFit.cover,
         errorBuilder: (context, error, stackTrace) => Container(
           color: AppColors.surfaceContainerLow,
-          child: Icon(Icons.person, size: 48, color: AppColors.onSurfaceVariant),
+          child: Icon(
+            Icons.person,
+            size: 48,
+            color: AppColors.onSurfaceVariant,
+          ),
         ),
       ),
     );
@@ -168,7 +193,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.verified_outlined, size: 16, color: AppColors.onSurfaceVariant),
+          Icon(
+            Icons.verified_outlined,
+            size: 16,
+            color: AppColors.onSurfaceVariant,
+          ),
           const SizedBox(width: 6),
           Text(
             'Verified Student',
@@ -213,9 +242,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
             iconBg: AppColors.primary.withOpacity(0.12),
             iconColor: AppColors.primary,
             title: 'Edit Profile',
-            trailing: Icon(Icons.chevron_right, color: AppColors.onSurfaceVariant),
-            onTap: () {
-              Navigator.of(context).pushNamed('/edit-profile');
+            trailing: Icon(
+              Icons.chevron_right,
+              color: AppColors.onSurfaceVariant,
+            ),
+            onTap: () async {
+              final saved = await Navigator.of(
+                context,
+              ).pushNamed('/edit-profile');
+              if (!mounted || saved != true) return;
+
+              await _loadProfile();
+              if (!mounted) return;
+
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('Changes saved.')));
             },
           ),
           _divider(),

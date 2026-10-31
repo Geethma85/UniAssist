@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+
 /// Handles all Firebase Authentication + user profile logic.
 /// UI screens should never call FirebaseAuth or Firestore directly —
 /// they call methods on this class instead.
@@ -38,12 +39,13 @@ class AuthService {
     }
 
     // Create the Firestore profile doc.
-    // If this fails, the Auth account still exists — see note below.
+    // If this fails, the Firebase Auth account still exists.
     await _firestore.collection('users').doc(user.uid).set({
       'uid': user.uid,
       'name': name.trim(),
       'email': email.trim(),
-      'role': 'student', // default role, admin accounts set manually in Firestore
+      'role':
+          'student', // default role, admin accounts set manually in Firestore
       'createdAt': FieldValue.serverTimestamp(),
     });
 
@@ -82,13 +84,10 @@ class AuthService {
 
     final role = doc.data()?['role'] ?? 'student';
 
-    return {
-      'user': user,
-      'role': role,
-    };
+    return {'user': user, 'role': role};
   }
 
-    /// Returns the signed-in user's role ('student' or 'admin') from Firestore.
+  /// Returns the signed-in user's role ('student' or 'admin') from Firestore.
   /// Falls back to 'student' if anything is missing or fails, so a problem
   /// can only ever HIDE the admin button, never show it by mistake.
   Future<String> getCurrentRole() async {
@@ -101,7 +100,7 @@ class AuthService {
       return 'student';
     }
   }
-  
+
   Future<String> getCurrentName() async {
     final user = _auth.currentUser;
     if (user == null) return '';
@@ -113,78 +112,151 @@ class AuthService {
     }
   }
 
-    Future<void> signInWithGoogle() async {
-      late final UserCredential credential;
+  Future<void> signInWithGoogle() async {
+    late final UserCredential credential;
 
-      if (kIsWeb) {
-        final provider = GoogleAuthProvider()
-          ..setCustomParameters({'prompt': 'select_account'});
+    if (kIsWeb) {
+      final provider = GoogleAuthProvider()
+        ..setCustomParameters({'prompt': 'select_account'});
 
-        credential = await _auth.signInWithPopup(provider);
-      } else if (defaultTargetPlatform == TargetPlatform.android) {
-        try {
-          final googleSignIn = GoogleSignIn.instance;
-          await (_googleInitialization ??= googleSignIn.initialize());
+      credential = await _auth.signInWithPopup(provider);
+    } else if (defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        final googleSignIn = GoogleSignIn.instance;
+        await (_googleInitialization ??= googleSignIn.initialize());
 
-          final googleUser = await googleSignIn.authenticate();
-          final idToken = googleUser.authentication.idToken;
+        final googleUser = await googleSignIn.authenticate();
+        final idToken = googleUser.authentication.idToken;
 
-          if (idToken == null) {
-            throw FirebaseAuthException(
-              code: 'google-token-missing',
-              message: 'Google did not return an authentication token.',
-            );
-          }
-
-          credential = await _auth.signInWithCredential(
-            GoogleAuthProvider.credential(idToken: idToken),
-          );
-        } on GoogleSignInException catch (e) {
-          debugPrint('Google sign-in error: ${e.code.name}: ${e.description}');
-
-          if (e.code == GoogleSignInExceptionCode.canceled) {
-            throw FirebaseAuthException(
-              code: 'popup-closed-by-user',
-              message: 'Google sign-in was cancelled.',
-            );
-          }
-
+        if (idToken == null) {
           throw FirebaseAuthException(
-            code: 'google-sign-in-failed',
-            message: 'Google sign-in could not be completed.',
+            code: 'google-token-missing',
+            message: 'Google did not return an authentication token.',
           );
         }
-      } else {
-        throw FirebaseAuthException(
-          code: 'unsupported-platform',
-          message: 'Google sign-in supports web and Android in UniAssist.',
+
+        credential = await _auth.signInWithCredential(
+          GoogleAuthProvider.credential(idToken: idToken),
         );
-      }
+      } on GoogleSignInException catch (e) {
+        debugPrint('Google sign-in error: ${e.code.name}: ${e.description}');
 
-      final user = credential.user;
-      if (user == null) {
-        throw FirebaseAuthException(
-          code: 'login-failed',
-          message: 'Google sign-in did not return a user.',
-        );
-      }
-
-      final profile = _firestore.collection('users').doc(user.uid);
-
-      await _firestore.runTransaction((transaction) async {
-        final snapshot = await transaction.get(profile);
-
-        if (!snapshot.exists) {
-          transaction.set(profile, {
-            'uid': user.uid,
-            'name': user.displayName ?? '',
-            'email': user.email ?? '',
-            'role': 'student',
-            'createdAt': FieldValue.serverTimestamp(),
-          });
+        if (e.code == GoogleSignInExceptionCode.canceled) {
+          throw FirebaseAuthException(
+            code: 'popup-closed-by-user',
+            message: 'Google sign-in was cancelled.',
+          );
         }
-      });
+
+        throw FirebaseAuthException(
+          code: 'google-sign-in-failed',
+          message: 'Google sign-in could not be completed.',
+        );
+      }
+    } else {
+      throw FirebaseAuthException(
+        code: 'unsupported-platform',
+        message: 'Google sign-in supports web and Android in UniAssist.',
+      );
     }
+
+    final user = credential.user;
+    if (user == null) {
+      throw FirebaseAuthException(
+        code: 'login-failed',
+        message: 'Google sign-in did not return a user.',
+      );
+    }
+
+    final profile = _firestore.collection('users').doc(user.uid);
+
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(profile);
+
+      if (!snapshot.exists) {
+        transaction.set(profile, {
+          'uid': user.uid,
+          'name': user.displayName ?? '',
+          'email': user.email ?? '',
+          'role': 'student',
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+    });
+  }
+
+  bool get canChangePassword {
+    return currentUser?.providerData.any(
+          (provider) => provider.providerId == 'password',
+        ) ??
+        false;
+  }
+
+  Future<Map<String, dynamic>> loadCurrentProfile() async {
+    final user = currentUser;
+    if (user == null) {
+      throw FirebaseAuthException(code: 'not-signed-in');
+    }
+
+    final snapshot = await _firestore.collection('users').doc(user.uid).get();
+
+    if (!snapshot.exists) {
+      throw FirebaseAuthException(
+        code: 'profile-missing',
+        message: 'Your profile could not be found.',
+      );
+    }
+
+    return {...snapshot.data()!, 'email': user.email ?? ''};
+  }
+
+  Future<void> saveProfileName(String name) async {
+    final user = currentUser;
+    if (user == null) {
+      throw FirebaseAuthException(code: 'not-signed-in');
+    }
+
+    final trimmedName = name.trim();
+    if (trimmedName.isEmpty || trimmedName.length > 80) {
+      throw ArgumentError('Name must contain 1–80 characters.');
+    }
+
+    await _firestore.collection('users').doc(user.uid).update({
+      'name': trimmedName,
+    });
+  }
+
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final user = currentUser;
+    if (user == null) {
+      throw FirebaseAuthException(code: 'not-signed-in');
+    }
+
+    if (!canChangePassword || user.email == null) {
+      throw FirebaseAuthException(
+        code: 'password-provider-required',
+        message: 'Manage your password through your sign-in provider.',
+      );
+    }
+
+    if (currentPassword.isEmpty || newPassword.length < 6) {
+      throw ArgumentError(
+        'Enter your current password and a new password '
+        'of at least 6 characters.',
+      );
+    }
+
+    final credential = EmailAuthProvider.credential(
+      email: user.email!,
+      password: currentPassword,
+    );
+
+    await user.reauthenticateWithCredential(credential);
+    await user.updatePassword(newPassword);
+  }
 
   /// Signs the current user out.
   Future<void> logout() async {

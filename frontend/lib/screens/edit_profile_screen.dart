@@ -1,4 +1,7 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+
+import '../services/auth_service.dart';
 import 'login_screen.dart' show AppColors;
 
 class EditProfileScreen extends StatefulWidget {
@@ -10,300 +13,278 @@ class EditProfileScreen extends StatefulWidget {
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
-
-  // TODO: pre-fill these from the signed-in user's real AuthService/Firestore data
-  final _usernameController = TextEditingController(text: 'alex_student24');
-  final _passwordController = TextEditingController();
+  final _authService = AuthService();
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _currentPasswordController = TextEditingController();
+  final _newPasswordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
-  static const String _universityEmail = 'alex.j@university.edu';
+  bool _loading = true;
+  bool _saving = false;
+  bool _canChangePassword = false;
+  String? _loadError;
+  String? _saveError;
 
-  bool _isSaving = false;
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
+
+    try {
+      final profile = await _authService.loadCurrentProfile();
+      if (!mounted) return;
+
+      setState(() {
+        _nameController.text = profile['name'] as String? ?? '';
+        _emailController.text = profile['email'] as String? ?? '';
+        _canChangePassword = _authService.canChangePassword;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = 'Could not load your profile. Please try again.';
+        _loading = false;
+      });
+    }
+  }
+
+  void _clearPasswords() {
+    _currentPasswordController.clear();
+    _newPasswordController.clear();
+    _confirmPasswordController.clear();
+  }
+
+  String _authError(String code) {
+    return switch (code) {
+      'wrong-password' ||
+      'invalid-credential' ||
+      'invalid-login-credentials' => 'Your current password is incorrect.',
+      'weak-password' || 'password-does-not-meet-requirements' =>
+        'Choose a stronger new password.',
+      'too-many-requests' => 'Too many attempts. Please wait and try again.',
+      'network-request-failed' =>
+        'Check your internet connection and try again.',
+      'requires-recent-login' ||
+      'user-token-expired' ||
+      'invalid-user-token' => 'Please sign out, sign in again, and retry.',
+      'not-signed-in' => 'Please sign in again.',
+      _ => 'Could not update your password. Please try again.',
+    };
+  }
+
+  Future<void> _handleSave() async {
+    if (_saving || !_formKey.currentState!.validate()) return;
+
+    FocusScope.of(context).unfocus();
+    final name = _nameController.text.trim();
+    final newPassword = _newPasswordController.text;
+    final currentPassword = _currentPasswordController.text;
+
+    setState(() {
+      _saving = true;
+      _saveError = null;
+    });
+
+    bool passwordChanged = false;
+
+    try {
+      if (_canChangePassword && newPassword.isNotEmpty) {
+        await _authService.changePassword(
+          currentPassword: currentPassword,
+          newPassword: newPassword,
+        );
+        passwordChanged = true;
+        if (mounted) _clearPasswords();
+      }
+
+      await _authService.saveProfileName(name);
+
+      if (!mounted) return;
+      setState(() => _saving = false);
+      Navigator.of(context).pop(true);
+    } on FirebaseAuthException catch (error) {
+      if (!mounted) return;
+      setState(() => _saveError = _authError(error.code));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _saveError = passwordChanged
+            ? 'Your password was changed, but your name could not be '
+                  'saved. Keep the password fields blank and retry saving.'
+            : 'Could not save your profile. Please try again.';
+      });
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
 
   @override
   void dispose() {
-    _usernameController.dispose();
-    _passwordController.dispose();
+    _nameController.dispose();
+    _emailController.dispose();
+    _currentPasswordController.dispose();
+    _newPasswordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
   }
 
-  Future<void> _handleSave() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _isSaving = true);
-
-    // TODO: wire to real update calls once AuthService exists:
-    //   - username -> Firestore users/{uid}.set({'displayName': ...}, merge: true)
-    //   - password -> FirebaseAuth updatePassword(), which requires a
-    //     recent sign-in. If it throws 'requires-recent-login', prompt the
-    //     user to re-enter their current password and reauthenticate first.
-    await Future.delayed(const Duration(milliseconds: 800));
-
-    if (!mounted) return;
-    setState(() => _isSaving = false);
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Changes saved (placeholder — not yet wired to Firebase)')),
+  Widget _field({
+    required String label,
+    required TextEditingController controller,
+    bool password = false,
+    bool readOnly = false,
+    String? helper,
+    String? Function(String?)? validator,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: TextFormField(
+        controller: controller,
+        enabled: !_saving,
+        readOnly: readOnly,
+        obscureText: password,
+        autocorrect: !password,
+        enableSuggestions: !password,
+        validator: validator,
+        decoration: InputDecoration(
+          labelText: label,
+          helperText: helper,
+          helperMaxLines: 3,
+          border: const OutlineInputBorder(),
+        ),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildAppBar(context),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+    return PopScope(
+      canPop: !_saving,
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          title: const Text('Edit Profile'),
+          backgroundColor: AppColors.background,
+          leading: BackButton(
+            onPressed: _saving ? null : () => Navigator.of(context).pop(),
+          ),
+        ),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _loadError != null
+            ? Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(_loadError!),
+                    TextButton(
+                      onPressed: _loadProfile,
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              )
+            : SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
                 child: Form(
                   key: _formKey,
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const SizedBox(height: 16),
-                      Text(
-                        'Edit Profile',
-                        style: TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.onSurface,
+                      _field(
+                        label: 'Name',
+                        controller: _nameController,
+                        validator: (value) {
+                          final name = value?.trim() ?? '';
+                          if (name.isEmpty) return 'Enter your name.';
+                          if (name.length > 80) {
+                            return 'Use no more than 80 characters.';
+                          }
+                          return null;
+                        },
+                      ),
+                      _field(
+                        label: 'Email',
+                        controller: _emailController,
+                        readOnly: true,
+                        helper: 'Your sign-in email.',
+                      ),
+                      if (_canChangePassword) ...[
+                        const Text(
+                          'Change password (optional)',
+                          style: TextStyle(fontWeight: FontWeight.bold),
                         ),
+                        const SizedBox(height: 16),
+                        _field(
+                          label: 'Current password',
+                          controller: _currentPasswordController,
+                          password: true,
+                          validator: (value) {
+                            if (_newPasswordController.text.isNotEmpty &&
+                                (value == null || value.isEmpty)) {
+                              return 'Enter your current password.';
+                            }
+                            return null;
+                          },
+                        ),
+                        _field(
+                          label: 'New password',
+                          controller: _newPasswordController,
+                          password: true,
+                          helper: 'Leave blank to keep your password.',
+                          validator: (value) {
+                            if (value != null &&
+                                value.isNotEmpty &&
+                                value.length < 6) {
+                              return 'Use at least 6 characters.';
+                            }
+                            return null;
+                          },
+                        ),
+                        _field(
+                          label: 'Confirm new password',
+                          controller: _confirmPasswordController,
+                          password: true,
+                          validator: (value) {
+                            if ((value ?? '') != _newPasswordController.text) {
+                              return 'Passwords do not match.';
+                            }
+                            return null;
+                          },
+                        ),
+                      ] else ...[
+                        const Text(
+                          'You signed in with Google. Manage your '
+                          'Google password through your Google Account.',
+                        ),
+                        const SizedBox(height: 20),
+                      ],
+                      if (_saveError != null) ...[
+                        Text(
+                          _saveError!,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                      FilledButton(
+                        onPressed: _saving ? null : _handleSave,
+                        child: Text(_saving ? 'Saving…' : 'Save Changes'),
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Update your academic identity and account details.',
-                        style: TextStyle(fontSize: 14, color: AppColors.onSurfaceVariant),
-                      ),
-                      const SizedBox(height: 24),
-                      Center(child: _buildAvatarPicker()),
-                      const SizedBox(height: 28),
-                      _buildCard(),
-                      const SizedBox(height: 24),
                     ],
                   ),
                 ),
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAppBar(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-      child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back, color: AppColors.primary),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-          Expanded(
-            child: Text(
-              'UniAssist',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: AppColors.primary,
-              ),
-            ),
-          ),
-          const SizedBox(width: 48), // balances the back button for true centering
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAvatarPicker() {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Container(
-          width: 112,
-          height: 112,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: AppColors.outlineVariant.withOpacity(0.4), width: 2),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Image.asset(
-            // TODO: swap for the real profile photo once storage is wired
-            'assets/images/profile_placeholder.png',
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) => Container(
-              color: AppColors.surfaceContainerLow,
-              child: Icon(Icons.person, size: 48, color: AppColors.onSurfaceVariant),
-            ),
-          ),
-        ),
-        Positioned(
-          bottom: 0,
-          right: 0,
-          child: GestureDetector(
-            onTap: () {
-              // TODO: implement image picker + Firebase Storage upload.
-              // This needs the image_picker package plus a Storage bucket
-              // rule allowing users to write only to their own uid path —
-              // worth scoping as its own small step, similar to auth.
-            },
-            child: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.background, width: 3),
-              ),
-              child: const Icon(Icons.camera_alt, color: Colors.white, size: 16),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.outlineVariant.withOpacity(0.4)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildLabel('Username'),
-          const SizedBox(height: 6),
-          TextFormField(
-            controller: _usernameController,
-            decoration: _fieldDecoration(),
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'Username is required';
-              }
-              return null;
-            },
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              _buildLabel('University Email'),
-              const SizedBox(width: 6),
-              Icon(Icons.verified, size: 16, color: AppColors.primary),
-            ],
-          ),
-          const SizedBox(height: 6),
-          TextFormField(
-            initialValue: _universityEmail,
-            enabled: false, // locked: identity-verifying field, not self-editable
-            decoration: _fieldDecoration().copyWith(
-              filled: true,
-              fillColor: AppColors.surfaceContainerLow,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Managed by your institution.',
-            style: TextStyle(fontSize: 12, color: AppColors.onSurfaceVariant),
-          ),
-          const SizedBox(height: 20),
-          _buildLabel('Password'),
-          const SizedBox(height: 6),
-          TextFormField(
-            controller: _passwordController,
-            obscureText: true,
-            decoration: _fieldDecoration(hint: 'Leave blank to keep current password'),
-            validator: (value) {
-              if (value != null && value.isNotEmpty && value.length < 6) {
-                return 'Password must be at least 6 characters';
-              }
-              return null;
-            },
-          ),
-          const SizedBox(height: 20),
-          _buildLabel('Confirm Password'),
-          const SizedBox(height: 6),
-          TextFormField(
-            controller: _confirmPasswordController,
-            obscureText: true,
-            decoration: _fieldDecoration(),
-            validator: (value) {
-              if (_passwordController.text.isNotEmpty && value != _passwordController.text) {
-                return 'Passwords do not match';
-              }
-              return null;
-            },
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: ElevatedButton(
-              onPressed: _isSaving ? null : _handleSave,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: AppColors.onPrimary,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              child: _isSaving
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Text(
-                      'Save Changes',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                    ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLabel(String text) {
-    return Text(
-      text,
-      style: TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w600,
-        color: AppColors.onSurface,
-      ),
-    );
-  }
-
-  InputDecoration _fieldDecoration({String? hint}) {
-    return InputDecoration(
-      hintText: hint,
-      hintStyle: TextStyle(fontSize: 13, color: AppColors.onSurfaceVariant.withOpacity(0.7)),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(24),
-        borderSide: BorderSide(color: AppColors.outlineVariant),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(24),
-        borderSide: BorderSide(color: AppColors.outlineVariant),
-      ),
-      disabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(24),
-        borderSide: BorderSide(color: AppColors.outlineVariant.withOpacity(0.5)),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(24),
-        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
       ),
     );
   }
