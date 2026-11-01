@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
+import 'forgot_password_screen.dart';
+
 /// UniAssist color palette, pulled from the Stitch design tokens.
 /// Kept as static consts here for now — if more screens repeat these,
 /// promote this into a shared `lib/theme/app_colors.dart`.
@@ -39,7 +41,6 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _errorMessage;
 
   bool _obscurePassword = true;
-  bool _rememberMe = false;
   bool _isLoading = false;
 
   @override
@@ -67,7 +68,10 @@ class _LoginScreenState extends State<LoginScreen> {
     } on FirebaseAuthException catch (e) {
       setState(() => _errorMessage = _friendlyAuthError(e.code));
     } catch (e) {
-      setState(() => _errorMessage = 'Something went wrong. Please check your connection and try again.');
+      setState(
+        () => _errorMessage =
+            'Something went wrong. Please check your connection and try again.',
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -87,10 +91,7 @@ class _LoginScreenState extends State<LoginScreen> {
       await _authService.signInWithGoogle();
 
       if (!mounted) return;
-      Navigator.of(context).pushNamedAndRemoveUntil(
-        '/home',
-        (route) => false,
-      );
+      Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
 
@@ -100,12 +101,10 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       final message = switch (e.code) {
-        'popup-blocked' =>
-          'Allow popups for UniAssist and try again.',
+        'popup-blocked' => 'Allow popups for UniAssist and try again.',
         'unauthorized-domain' =>
           'This website is not authorized for Google sign-in.',
-        'operation-not-allowed' =>
-          'Google sign-in is not enabled yet.',
+        'operation-not-allowed' => 'Google sign-in is not enabled yet.',
         'account-exists-with-different-credential' =>
           'Use your existing sign-in method for this account.',
         'network-request-failed' =>
@@ -117,15 +116,14 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (_) {
       if (mounted) {
         setState(() {
-          _errorMessage =
-              'Could not finish Google sign-in. Please try again.';
+          _errorMessage = 'Could not finish Google sign-in. Please try again.';
         });
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
-  
+
   /// Maps Firebase Auth error codes to user-friendly messages.
   String _friendlyAuthError(String code) {
     switch (code) {
@@ -158,7 +156,10 @@ class _LoginScreenState extends State<LoginScreen> {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 440),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 32,
+                  vertical: 40,
+                ),
                 decoration: BoxDecoration(
                   color: AppColors.surfaceContainerLowest,
                   borderRadius: BorderRadius.circular(12),
@@ -188,7 +189,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 16),
                       _buildPasswordField(),
                       const SizedBox(height: 12),
-                      _buildRememberMe(),
+
                       const SizedBox(height: 24),
                       if (_errorMessage != null) ...[
                         Container(
@@ -197,11 +198,16 @@ class _LoginScreenState extends State<LoginScreen> {
                           decoration: BoxDecoration(
                             color: Colors.red.withOpacity(0.08),
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.red.withOpacity(0.3)),
+                            border: Border.all(
+                              color: Colors.red.withOpacity(0.3),
+                            ),
                           ),
                           child: Text(
                             _errorMessage!,
-                            style: const TextStyle(color: Colors.red, fontSize: 13),
+                            style: const TextStyle(
+                              color: Colors.red,
+                              fontSize: 13,
+                            ),
                             textAlign: TextAlign.center,
                           ),
                         ),
@@ -259,10 +265,7 @@ class _LoginScreenState extends State<LoginScreen> {
         Text(
           'Welcome back. Please enter your details.',
           textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 16,
-            color: AppColors.onSurfaceVariant,
-          ),
+          style: TextStyle(fontSize: 16, color: AppColors.onSurfaceVariant),
         ),
       ],
     );
@@ -276,9 +279,7 @@ class _LoginScreenState extends State<LoginScreen> {
         onPressed: _isLoading ? null : _handleGoogleSignIn,
         style: OutlinedButton.styleFrom(
           side: BorderSide(color: AppColors.outlineVariant),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -344,7 +345,10 @@ class _LoginScreenState extends State<LoginScreen> {
           keyboardType: TextInputType.emailAddress,
           decoration: InputDecoration(
             hintText: 'student@university.edu',
-            prefixIcon: const Icon(Icons.mail_outline, color: AppColors.outline),
+            prefixIcon: const Icon(
+              Icons.mail_outline,
+              color: AppColors.outline,
+            ),
             filled: true,
             fillColor: AppColors.surfaceContainerLowest,
             contentPadding: const EdgeInsets.symmetric(vertical: 14),
@@ -391,9 +395,15 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
             TextButton(
-              onPressed: () {
-                // TODO: wire Firebase password reset flow
-              },
+              onPressed: _isLoading
+                  ? null
+                  : () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const ForgotPasswordScreen(),
+                        ),
+                      );
+                    },
               style: TextButton.styleFrom(
                 padding: EdgeInsets.zero,
                 minimumSize: const Size(0, 0),
@@ -412,13 +422,19 @@ class _LoginScreenState extends State<LoginScreen> {
           obscureText: _obscurePassword,
           decoration: InputDecoration(
             hintText: '••••••••',
-            prefixIcon: const Icon(Icons.lock_outline, color: AppColors.outline),
+            prefixIcon: const Icon(
+              Icons.lock_outline,
+              color: AppColors.outline,
+            ),
             suffixIcon: IconButton(
               icon: Icon(
-                _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                _obscurePassword
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined,
                 color: AppColors.outline,
               ),
-              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+              onPressed: () =>
+                  setState(() => _obscurePassword = !_obscurePassword),
             ),
             filled: true,
             fillColor: AppColors.surfaceContainerLowest,
@@ -450,27 +466,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildRememberMe() {
-    return Row(
-      children: [
-        SizedBox(
-          width: 20,
-          height: 20,
-          child: Checkbox(
-            value: _rememberMe,
-            activeColor: AppColors.primary,
-            onChanged: (value) => setState(() => _rememberMe = value ?? false),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          'Remember for 30 days',
-          style: TextStyle(fontSize: 14, color: AppColors.onSurfaceVariant),
-        ),
-      ],
-    );
-  }
-
   Widget _buildSignInButton() {
     return SizedBox(
       width: double.infinity,
@@ -481,9 +476,7 @@ class _LoginScreenState extends State<LoginScreen> {
           backgroundColor: AppColors.primary,
           foregroundColor: AppColors.onPrimary,
           elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
         child: _isLoading
             ? const SizedBox(

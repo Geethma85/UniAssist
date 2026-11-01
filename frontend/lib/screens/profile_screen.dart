@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'login_screen.dart' show AppColors;
 import '../widgets/app_bottom_nav.dart';
 import '../services/auth_service.dart';
+import '../widgets/profile_avatar.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -17,12 +18,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _error;
 
   String _name = '';
+  String? _photoBase64;
   String _email = '';
   String _accountRole = '';
   String _joinedDate = '';
-
-  // TODO: no field for this in Firestore yet — not collected at registration.
-  static const String _university = 'Central University';
 
   @override
   void initState() {
@@ -53,6 +52,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() {
         _error = null;
         _name = data['name'] as String? ?? 'Unknown';
+        _photoBase64 = data['photoBase64'] as String?;
         _email = data['email'] as String? ?? user.email ?? '—';
         _accountRole = _formatRole(data['role'] as String? ?? 'student');
         _joinedDate = _formatJoinedDate(data['createdAt']);
@@ -157,30 +157,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildAvatar() {
-    return Container(
-      width: 112,
-      height: 112,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: AppColors.outlineVariant.withOpacity(0.4),
-          width: 2,
-        ),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Image.asset(
-        'assets/images/profile_placeholder.png',
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => Container(
-          color: AppColors.surfaceContainerLow,
-          child: Icon(
-            Icons.person,
-            size: 48,
-            color: AppColors.onSurfaceVariant,
-          ),
-        ),
-      ),
-    );
+    return ProfileAvatar(photoBase64: _photoBase64, size: 112);
   }
 
   Widget _buildVerifiedBadge() {
@@ -200,7 +177,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(width: 6),
           Text(
-            'Verified Student',
+            '$_accountRole account',
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
@@ -250,10 +227,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               final saved = await Navigator.of(
                 context,
               ).pushNamed('/edit-profile');
-              if (!mounted || saved != true) return;
+              if (!context.mounted || saved != true) return;
 
               await _loadProfile();
-              if (!mounted) return;
+              if (!context.mounted) return;
 
               ScaffoldMessenger.of(
                 context,
@@ -275,14 +252,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             iconColor: const Color(0xFF00524B),
             title: 'Joined Date',
             value: _joinedDate,
-          ),
-          _divider(),
-          _buildInfoRow(
-            icon: Icons.account_balance_outlined,
-            iconBg: AppColors.surfaceContainerLow,
-            iconColor: AppColors.onSurfaceVariant,
-            title: 'University',
-            value: _university,
           ),
         ],
       ),

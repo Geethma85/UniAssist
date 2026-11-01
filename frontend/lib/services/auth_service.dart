@@ -210,7 +210,11 @@ class AuthService {
     return {...snapshot.data()!, 'email': user.email ?? ''};
   }
 
-  Future<void> saveProfileName(String name) async {
+  Future<void> saveProfileName(
+    String name, {
+    String? photoBase64,
+    bool updatePhoto = false,
+  }) async {
     final user = currentUser;
     if (user == null) {
       throw FirebaseAuthException(code: 'not-signed-in');
@@ -221,8 +225,13 @@ class AuthService {
       throw ArgumentError('Name must contain 1–80 characters.');
     }
 
+    if (updatePhoto && photoBase64 != null && photoBase64.length > 100000) {
+      throw ArgumentError('The profile photo is too large.');
+    }
+
     await _firestore.collection('users').doc(user.uid).update({
       'name': trimmedName,
+      if (updatePhoto) 'photoBase64': photoBase64,
     });
   }
 
@@ -256,6 +265,79 @@ class AuthService {
 
     await user.reauthenticateWithCredential(credential);
     await user.updatePassword(newPassword);
+  }
+
+  Future<void> sendPasswordReset(String email) async {
+    try {
+      await _auth.sendPasswordResetEmail(email: email.trim());
+    } on FirebaseAuthException catch (error) {
+      // Show the same confirmation for unknown addresses.
+      if (error.code != 'user-not-found') rethrow;
+    }
+  }
+
+  Future<void> setPasswordForGoogleAccount(String newPassword) async {
+    final user = currentUser;
+
+    if (user == null || user.email == null) {
+      throw FirebaseAuthException(code: 'not-signed-in');
+    }
+
+    if (canChangePassword) {
+      throw FirebaseAuthException(
+        code: 'provider-already-linked',
+        message: 'This account already has a UniAssist password.',
+      );
+    }
+
+    final hasGoogle = user.providerData.any(
+      (provider) => provider.providerId == 'google.com',
+    );
+
+    if (!hasGoogle) {
+      throw FirebaseAuthException(code: 'unsupported-provider');
+    }
+
+    if (newPassword.length < 6) {
+      throw FirebaseAuthException(code: 'weak-password');
+    }
+
+    // Confirm ownership of the existing Google account first.
+    if (kIsWeb) {
+      final provider = GoogleAuthProvider()
+        ..setCustomParameters({'prompt': 'select_account'});
+
+      await user.reauthenticateWithPopup(provider);
+    } else if (defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        final google = GoogleSignIn.instance;
+        await (_googleInitialization ??= google.initialize());
+
+        final account = await google.authenticate();
+        final idToken = account.authentication.idToken;
+
+        if (idToken == null) {
+          throw FirebaseAuthException(code: 'google-token-missing');
+        }
+
+        await user.reauthenticateWithCredential(
+          GoogleAuthProvider.credential(idToken: idToken),
+        );
+      } on GoogleSignInException catch (error) {
+        throw FirebaseAuthException(
+          code: error.code == GoogleSignInExceptionCode.canceled
+              ? 'popup-closed-by-user'
+              : 'google-sign-in-failed',
+        );
+      }
+    } else {
+      throw FirebaseAuthException(code: 'unsupported-platform');
+    }
+
+    // Link the password to the existing account, preserving its UID.
+    await user.linkWithCredential(
+      EmailAuthProvider.credential(email: user.email!, password: newPassword),
+    );
   }
 
   /// Signs the current user out.

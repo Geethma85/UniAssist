@@ -1,8 +1,10 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-
+import 'dart:convert';
+import '../services/profile_photo_service.dart';
 import '../services/auth_service.dart';
 import 'login_screen.dart' show AppColors;
+import 'set_password_screen.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -20,6 +22,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final _newPasswordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
+  String? _photoBase64;
+  bool _choosingPhoto = false;
   bool _loading = true;
   bool _saving = false;
   bool _canChangePassword = false;
@@ -46,6 +50,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         _nameController.text = profile['name'] as String? ?? '';
         _emailController.text = profile['email'] as String? ?? '';
         _canChangePassword = _authService.canChangePassword;
+        _photoBase64 = profile['photoBase64'] as String?;
         _loading = false;
       });
     } catch (_) {
@@ -81,8 +86,107 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     };
   }
 
+  Future<void> _choosePhoto() async {
+    if (_saving || _choosingPhoto) return;
+
+    setState(() {
+      _choosingPhoto = true;
+      _saveError = null;
+    });
+
+    try {
+      final photo = await ProfilePhotoService.choosePhoto();
+      if (!mounted || photo == null) return;
+
+      setState(() => _photoBase64 = photo);
+    } on FormatException catch (error) {
+      if (!mounted) return;
+      setState(() => _saveError = error.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _saveError = 'Could not open that photo. Please try another.';
+      });
+    } finally {
+      if (mounted) setState(() => _choosingPhoto = false);
+    }
+  }
+
+  Widget _buildPhotoEditor() {
+    Widget preview = const Icon(Icons.person, size: 60);
+
+    if (_photoBase64 != null) {
+      try {
+        preview = Image.memory(
+          base64Decode(_photoBase64!),
+          fit: BoxFit.cover,
+          width: 112,
+          height: 112,
+          gaplessPlayback: true,
+          errorBuilder: (_, error, stackTrace) =>
+              const Icon(Icons.person, size: 60),
+        );
+      } on FormatException {
+        preview = const Icon(Icons.person, size: 60);
+      }
+    }
+
+    return Column(
+      children: [
+        ClipOval(
+          child: Container(
+            width: 112,
+            height: 112,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            child: preview,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextButton.icon(
+          onPressed: _saving || _choosingPhoto ? null : _choosePhoto,
+          icon: const Icon(Icons.add_a_photo_outlined),
+          label: Text(_choosingPhoto ? 'Preparing photo…' : 'Choose photo'),
+        ),
+        if (_photoBase64 != null)
+          TextButton(
+            onPressed: _saving || _choosingPhoto
+                ? null
+                : () => setState(() => _photoBase64 = null),
+            child: const Text('Remove photo'),
+          ),
+        const Text(
+          'JPG or PNG, up to 5 MB. Saved when you select Save Changes.',
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  Future<void> _openSetPassword() async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(builder: (_) => const SetPasswordScreen()),
+    );
+
+    if (!mounted || saved != true) return;
+
+    setState(() {
+      _canChangePassword = _authService.canChangePassword;
+      _clearPasswords();
+      _saveError = null;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('UniAssist password added. Google sign-in still works.'),
+      ),
+    );
+  }
+
   Future<void> _handleSave() async {
-    if (_saving || !_formKey.currentState!.validate()) return;
+    if (_saving || _choosingPhoto || !_formKey.currentState!.validate()) {
+      return;
+    }
 
     FocusScope.of(context).unfocus();
     final name = _nameController.text.trim();
@@ -106,7 +210,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         if (mounted) _clearPasswords();
       }
 
-      await _authService.saveProfileName(name);
+      await _authService.saveProfileName(
+        name,
+        photoBase64: _photoBase64,
+        updatePhoto: true,
+      );
 
       if (!mounted) return;
       setState(() => _saving = false);
@@ -118,7 +226,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       if (!mounted) return;
       setState(() {
         _saveError = passwordChanged
-            ? 'Your password was changed, but your name could not be '
+            ? 'Your password was changed, but your profile could not be '
                   'saved. Keep the password fields blank and retry saving.'
             : 'Could not save your profile. Please try again.';
       });
@@ -200,6 +308,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      _buildPhotoEditor(),
                       _field(
                         label: 'Name',
                         controller: _nameController,
@@ -263,8 +372,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         ),
                       ] else ...[
                         const Text(
-                          'You signed in with Google. Manage your '
-                          'Google password through your Google Account.',
+                          'You use Google sign-in. You can also add a separate '
+                          'UniAssist password for email/password login.',
+                        ),
+                        const SizedBox(height: 12),
+                        OutlinedButton(
+                          onPressed: _saving || _choosingPhoto
+                              ? null
+                              : _openSetPassword,
+                          child: const Text('Set UniAssist password'),
                         ),
                         const SizedBox(height: 20),
                       ],
@@ -278,7 +394,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         const SizedBox(height: 16),
                       ],
                       FilledButton(
-                        onPressed: _saving ? null : _handleSave,
+                        onPressed: _saving || _choosingPhoto
+                            ? null
+                            : _handleSave,
                         child: Text(_saving ? 'Saving…' : 'Save Changes'),
                       ),
                     ],
