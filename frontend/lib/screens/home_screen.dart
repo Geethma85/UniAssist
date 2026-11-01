@@ -4,6 +4,7 @@ import '../widgets/app_bottom_nav.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import 'chat_screen.dart';
+import '../widgets/profile_avatar.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -25,6 +26,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isAdmin = false;
   int? _docCount; // null = unknown (not loaded yet, or the request failed)
   String _fullName = '';
+  String? _photoBase64;
 
   @override
   void initState() {
@@ -57,29 +59,42 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadProfile() async {
-    final role = await _authService.getCurrentRole();
-    final name = await _authService.getCurrentName();
-    if (!mounted) return;
-    setState(() {
-      _isAdmin = role == 'admin';
-      _fullName = name;
-    });
-    if (_isAdmin) _loadDocCount();
+    try {
+      final profile = await _authService.loadCurrentProfile();
+      if (!mounted) return;
+
+      setState(() {
+        _isAdmin = profile['role'] == 'admin';
+        _fullName = profile['name'] as String? ?? '';
+        _photoBase64 = profile['photoBase64'] as String?;
+      });
+
+      if (_isAdmin) await _loadDocCount();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isAdmin = false;
+        _fullName = '';
+        _photoBase64 = null;
+      });
+    }
   }
 
   Future<void> _loadDocCount() async {
     try {
       final docs = await ApiService.listDocuments();
-      if (mounted) setState(() => _docCount = docs.length);
+      if (!mounted) return;
+      setState(() => _docCount = docs.length);
     } catch (_) {
-      if (mounted) setState(() => _docCount = null);
+      if (!mounted) return;
+      setState(() => _docCount = null);
     }
   }
 
   Future<void> _refresh() async {
     await Future.wait([
+      _loadProfile(),
       _loadConversations(),
-      if (_isAdmin) _loadDocCount(),
     ]);
   }
 
@@ -205,21 +220,17 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
-        Container(
-          width: 44,
-          height: 44,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: AppColors.skyLight,
-            shape: BoxShape.circle,
-            border: Border.all(color: AppColors.skyBorder, width: 2),
-          ),
-          child: Text(
-            _initials,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              color: AppColors.brandBlue,
-            ),
+        InkWell(
+          customBorder: const CircleBorder(),
+          onTap: () async {
+            await Navigator.of(context).pushNamed('/profile');
+            if (!mounted) return;
+            await _loadProfile();
+          },
+          child: ProfileAvatar(
+            photoBase64: _photoBase64,
+            size: 44,
+            initials: _initials,
           ),
         ),
       ],
