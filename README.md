@@ -4,9 +4,24 @@ An AI assistant for university students. Students chat with UniAssist about cour
 
 > Portfolio project built to practise full-stack development, AI integration and testing.
 
-| Home | Chat | Manage documents (admin) |
-|---|---|---|
-| ![Home](docs/screenshots/home.jpg) | ![Chat](docs/screenshots/chat.jpg) | ![Admin](docs/screenshots/admin-documents.jpg) |
+<table>
+  <tr>
+    <th width="33%">Home</th>
+    <th width="33%">Chat</th>
+    <th width="33%">Manage documents</th>
+  </tr>
+  <tr>
+    <td valign="top">
+      <img src="docs/screenshots/home.jpg" width="100%" alt="Home screen">
+    </td>
+    <td valign="top">
+      <img src="docs/screenshots/chat.jpg" width="100%" alt="Chat with citations">
+    </td>
+    <td valign="top">
+      <img src="docs/screenshots/admin-documents.jpg" width="100%" alt="Admin document management">
+    </td>
+  </tr>
+</table>
 
 ## Live demo
 
