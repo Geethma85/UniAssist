@@ -6,7 +6,7 @@ An AI assistant for university students. Students chat with UniAssist about cour
 
 | Home | Chat | Manage documents (admin) |
 |---|---|---|
-| ![Home](docs/screenshots/home.png) | ![Chat](docs/screenshots/chat.png) | ![Admin](docs/screenshots/admin-documents.png) |
+| ![Home](docs/screenshots/home.jpg) | ![Chat](docs/screenshots/chat.jpg) | ![Admin](docs/screenshots/admin-documents.jpg) |
 
 ## Live demo
 
