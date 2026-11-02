@@ -24,6 +24,9 @@ The backend scales to zero when idle, so the first request may take longer.
 - Email/password registration and login, plus Google sign-in on web and Android
 - Chat with an assistant that answers from uploaded documents and admits uncertainty when it has no source
 - Conversation history saved per user, with a full history screen and a recent-conversations list on Home
+- Edit profile details and upload, replace or remove a profile photo
+- Recover forgotten passwords through email
+- Change an existing password or add a UniAssist password to a Google account
 
 **Admins**
 - Upload `.txt` and `.pdf` documents (validated, chunked, embedded and indexed)
@@ -181,7 +184,7 @@ Azure AI Search was checked manually through document upload, retrieval and dele
 
 ## Roadmap
 - Conversation deletion and rename
-- Email verification and password reset
+- Email verification
 - Retrieval evaluation set to tune the threshold properly
 
 ## Project workflow
